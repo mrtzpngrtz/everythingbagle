@@ -914,9 +914,10 @@ app.post('/mcp/:owner/:board/upload', mcpLimiter, (req, res, next) => {
 }, requireBoardKey, async (req, res) => {
   if (req.boardKeyEntry.readOnly) return res.status(403).json({ error: 'Key is read-only' });
 
-  const { base64, mimeType, filename, url } = req.body;
+  const { base64, mimeType, filename, url, path: localPath } = req.body;
   const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif']);
   const MAX = 20 * 1024 * 1024; // 20 MB
+  const EXT_MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif' };
 
   try {
     let buf, mime, ext;
@@ -928,13 +929,25 @@ app.post('/mcp/:owner/:board/upload', mcpLimiter, (req, res, next) => {
       mime = (r.headers.get('content-type') || '').split(';')[0].trim();
       if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed: ' + mime });
       buf = Buffer.from(await r.arrayBuffer());
+    } else if (localPath) {
+      // Read from local filesystem path (sandboxed to SSBD_UPLOAD_BASE)
+      const uploadBase = path.resolve(process.env.SSBD_UPLOAD_BASE || '/mnt/user-data/uploads');
+      const resolved = path.resolve(uploadBase, localPath);
+      if (!resolved.startsWith(uploadBase + path.sep) && resolved !== uploadBase) {
+        return res.status(400).json({ error: 'Path traversal not allowed' });
+      }
+      if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'File not found: ' + localPath });
+      buf = fs.readFileSync(resolved);
+      if (buf.length > MAX) return res.status(413).json({ error: 'Image too large (max 20 MB)' });
+      mime = EXT_MIME[path.extname(localPath).toLowerCase()] || 'image/jpeg';
+      if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed' });
     } else if (base64) {
       mime = mimeType || 'image/jpeg';
       if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed' });
       buf = Buffer.from(base64, 'base64');
       if (buf.length > MAX) return res.status(413).json({ error: 'Image too large (max 20 MB)' });
     } else {
-      return res.status(400).json({ error: 'Provide base64 or url' });
+      return res.status(400).json({ error: 'Provide path, base64, or url' });
     }
 
     ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp', 'image/avif': '.avif' }[mime] || '.jpg';

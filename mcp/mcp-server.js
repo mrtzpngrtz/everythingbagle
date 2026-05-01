@@ -92,10 +92,11 @@ const TOOLS = [
   },
   {
     name: 'upload_image',
-    description: 'Upload an image to the board storage. Returns a src URL to use with add_element type=image. Provide either a public image URL (url) or a base64-encoded image (base64 + mimeType).',
+    description: 'Upload an image to the board storage. Returns a src URL to use with add_element type=image. Provide one of: path (file on server under SSBD_UPLOAD_BASE, e.g. "photo.jpg"), url (public URL to fetch), or base64 + mimeType.',
     inputSchema: {
       type: 'object',
       properties: {
+        path:     { type: 'string', description: 'Path to a file under the server upload base directory (e.g. "photo.jpg" → /mnt/user-data/uploads/photo.jpg). Fastest, zero token cost.' },
         url:      { type: 'string', description: 'Public URL of the image to fetch and store' },
         base64:   { type: 'string', description: 'Base64-encoded image data' },
         mimeType: { type: 'string', description: 'MIME type for base64 upload, e.g. image/png' },
@@ -187,7 +188,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const res = await fetch(`${MCP_BASE}/upload`, {
           method: 'POST',
           headers: HEADERS,
-          body: JSON.stringify({ url: args.url, base64: args.base64, mimeType: args.mimeType, filename: args.filename }),
+          body: JSON.stringify({ path: args.path, url: args.url, base64: args.base64, mimeType: args.mimeType, filename: args.filename }),
         });
         if (!res.ok) throw new Error(`Upload failed ${res.status}: ${await res.text()}`);
         const data = await res.json();
