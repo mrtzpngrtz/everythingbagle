@@ -2735,6 +2735,21 @@ body.dark #suggestion-submit:hover {
 .todo-star:hover { opacity: 0.8; }
 .todo-item.important .todo-star { opacity: 1; }
 
+.todo-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--dark-grey);
+  opacity: 0;
+  flex-shrink: 0;
+  padding: 0 2px;
+  line-height: 1;
+  transition: opacity 0.1s, color 0.1s;
+}
+.todo-item:hover .todo-delete { opacity: 0.35; }
+.todo-delete:hover { opacity: 1 !important; color: var(--black); }
+
 .todo-check {
   width: 16px;
   height: 16px;

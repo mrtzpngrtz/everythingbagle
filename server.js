@@ -9,6 +9,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { rateLimit } = require('express-rate-limit');
+const FileStore = require('session-file-store')(session);
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many login attempts, try again later' } });
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many registration attempts, try again later' } });
@@ -186,6 +187,7 @@ if (!process.env.SESSION_SECRET) {
   process.exit(1);
 }
 const sessionMiddleware = session({
+  store: new FileStore({ path: './data/sessions', ttl: 7 * 24 * 60 * 60, retries: 0, logFn: () => {} }),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,

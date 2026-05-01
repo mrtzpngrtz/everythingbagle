@@ -35,6 +35,7 @@ const Todos = {
           <span class="todo-item-text">${Utils.escapeHtml(item.text)}</span>
           ${assigneeHtml}
           <button class="todo-star" data-todo-idx="${idx}" title="${item.important ? 'Unmark important' : 'Mark important'}">${item.important ? '★' : '☆'}</button>
+          <button class="todo-delete" data-todo-idx="${idx}" title="Delete">×</button>
         </div>`;
     });
 
@@ -65,6 +66,19 @@ const Todos = {
         const idx = parseInt(btn.dataset.todoIdx);
         if (data.items && data.items[idx] !== undefined) {
           data.items[idx].important = !data.items[idx].important;
+          this.refresh(el, data);
+          App.saveState();
+        }
+      });
+    });
+
+    // Delete item
+    el.querySelectorAll('.todo-delete').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.todoIdx);
+        if (data.items) {
+          data.items.splice(idx, 1);
           this.refresh(el, data);
           App.saveState();
         }
