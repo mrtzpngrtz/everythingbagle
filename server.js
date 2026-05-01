@@ -908,6 +908,46 @@ app.get('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
   res.json({ ...safe, boardName: req.params.board, owner: req.params.owner });
 });
 
+// Upload image via base64 or remote URL
+app.post('/mcp/:owner/:board/upload', mcpLimiter, (req, res, next) => {
+  req.params.name = req.params.board; next();
+}, requireBoardKey, async (req, res) => {
+  if (req.boardKeyEntry.readOnly) return res.status(403).json({ error: 'Key is read-only' });
+
+  const { base64, mimeType, filename, url } = req.body;
+  const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif']);
+  const MAX = 20 * 1024 * 1024; // 20 MB
+
+  try {
+    let buf, mime, ext;
+
+    if (url) {
+      // Fetch remote image
+      const fetch = (await import('node-fetch')).default;
+      const r = await fetch(url, { redirect: 'follow', size: MAX });
+      mime = (r.headers.get('content-type') || '').split(';')[0].trim();
+      if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed: ' + mime });
+      buf = Buffer.from(await r.arrayBuffer());
+    } else if (base64) {
+      mime = mimeType || 'image/jpeg';
+      if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed' });
+      buf = Buffer.from(base64, 'base64');
+      if (buf.length > MAX) return res.status(413).json({ error: 'Image too large (max 20 MB)' });
+    } else {
+      return res.status(400).json({ error: 'Provide base64 or url' });
+    }
+
+    ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp', 'image/avif': '.avif' }[mime] || '.jpg';
+    const fname = (filename ? filename.replace(/[^a-zA-Z0-9._-]/g, '') : '') || (Date.now() + ext);
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9) + ext;
+    const dest = path.join(__dirname, 'uploads', unique);
+    fs.writeFileSync(dest, buf);
+    res.json({ src: '/uploads/' + unique, filename: unique, size: buf.length, mimeType: mime });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Write full board (read-only keys rejected)
 app.put('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
   req.params.name = req.params.board; next();

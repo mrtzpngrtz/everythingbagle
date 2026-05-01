@@ -131,16 +131,27 @@ const Properties = {
     if (data.type === 'image') {
       const ct = data.cropTop || 0, cr = data.cropRight || 0, cb = data.cropBottom || 0, cl = data.cropLeft || 0;
       const rot = data.rotation || 0;
+      const tags = data.tags || [];
       html += `
+        <div class="prop-group" id="prop-tags-group">
+          <div class="prop-label">02 — TAGS</div>
+          <div class="prop-tags">
+            ${tags.map(t => `<span class="prop-tag">${Utils.escapeHtml(t)}<button class="prop-tag-remove" data-tag="${Utils.escapeAttr(t)}">×</button></span>`).join('')}
+          </div>
+          <div class="prop-tag-input-row">
+            <input class="prop-input prop-tag-input" type="text" placeholder="ADD TAG…" maxlength="32" />
+            <button class="prop-btn prop-tag-add-btn">+</button>
+          </div>
+        </div>
         <div class="prop-group">
-          <div class="prop-label">02 — ROTATE</div>
+          <div class="prop-label">03 — ROTATE</div>
           <div class="prop-btn-row">
             <button class="prop-btn" data-rotate="-90">↺ CCW</button>
             <button class="prop-btn" data-rotate="90">↻ CW</button>
           </div>
         </div>
         <div class="prop-group">
-          <div class="prop-label">03 — SCALE</div>
+          <div class="prop-label">04 — SCALE</div>
           <div class="prop-slider-row">
             <span class="prop-slider-label">%</span>
             <input class="prop-slider" type="range" data-prop="scale" value="100" min="10" max="300" />
@@ -148,7 +159,7 @@ const Properties = {
           </div>
         </div>
         <div class="prop-group">
-          <div class="prop-label">04 — ZOOM</div>
+          <div class="prop-label">05 — ZOOM</div>
           <div class="prop-slider-row">
             <span class="prop-slider-label">⌖</span>
             <input class="prop-slider" type="range" data-prop="imageZoom"
@@ -157,7 +168,7 @@ const Properties = {
           </div>
         </div>
         <div class="prop-group">
-          <div class="prop-label">05 — CROP</div>
+          <div class="prop-label">06 — CROP</div>
           <div class="prop-slider-row">
             <span class="prop-slider-label">↑</span>
             <input class="prop-slider" type="range" data-prop="cropTop" value="${ct}" min="0" max="90" />
@@ -314,6 +325,32 @@ const Properties = {
         Elements.updateElement(data.id, { [prop]: val });
         Connections.render();
         App.saveState();
+      });
+    });
+
+    // Bind tag UI
+    const tagInput = content.querySelector('.prop-tag-input');
+    const tagAddBtn = content.querySelector('.prop-tag-add-btn');
+    if (tagInput && tagAddBtn) {
+      const addTag = () => {
+        const val = tagInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        if (!val) return;
+        const cur = Elements.getData(data.id);
+        const tags = [...new Set([...(cur.tags || []), val])];
+        Elements.updateElement(data.id, { tags });
+        App.saveState();
+        this.show(Elements.getData(data.id));
+      };
+      tagAddBtn.addEventListener('click', addTag);
+      tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
+    }
+    content.querySelectorAll('.prop-tag-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tag = btn.dataset.tag;
+        const cur = Elements.getData(data.id);
+        Elements.updateElement(data.id, { tags: (cur.tags || []).filter(t => t !== tag) });
+        App.saveState();
+        this.show(Elements.getData(data.id));
       });
     });
 

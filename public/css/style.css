@@ -1412,6 +1412,36 @@ body.dark .util-toast {
   margin-bottom: 4px;
 }
 
+/* Tags */
+.prop-tags {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-bottom: 6px; min-height: 4px;
+}
+.prop-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 0.5px;
+  background: var(--black); color: var(--white);
+  padding: 2px 6px 2px 7px;
+  line-height: 1.4;
+}
+.prop-tag-remove {
+  background: none; border: none;
+  color: rgba(255,255,255,0.5); cursor: pointer;
+  font-size: 11px; line-height: 1; padding: 0;
+}
+.prop-tag-remove:hover { color: var(--white); }
+.prop-tag-input-row {
+  display: flex; gap: 4px;
+}
+.prop-tag-input {
+  flex: 1; font-family: var(--font-mono); font-size: 10px;
+  background: var(--off-white); border: var(--border);
+  color: var(--black); padding: 4px 8px; outline: none;
+}
+.prop-tag-input:focus { border-color: var(--black); }
+body.dark .prop-tag-input { background: #1A1A1A; border-color: #333; color: #E0E0E0; }
+
 .prop-btn {
   flex: 1;
   background: none;

@@ -91,17 +91,31 @@ const TOOLS = [
     },
   },
   {
-    name: 'add_element',
-    description: 'Add a new element to the board. Returns the updated element with its generated id.',
+    name: 'upload_image',
+    description: 'Upload an image to the board storage. Returns a src URL to use with add_element type=image. Provide either a public image URL (url) or a base64-encoded image (base64 + mimeType).',
     inputSchema: {
       type: 'object',
       properties: {
-        type:    { type: 'string', description: 'Element type: text | note | heading | rect | circle | todo | pin' },
+        url:      { type: 'string', description: 'Public URL of the image to fetch and store' },
+        base64:   { type: 'string', description: 'Base64-encoded image data' },
+        mimeType: { type: 'string', description: 'MIME type for base64 upload, e.g. image/png' },
+        filename: { type: 'string', description: 'Optional filename hint' },
+      },
+    },
+  },
+  {
+    name: 'add_element',
+    description: 'Add a new element to the board. For images, first call upload_image to get a src, then add with type=image and that src.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type:    { type: 'string', description: 'Element type: text | note | heading | rect | circle | todo | pin | image' },
         x:       { type: 'number', description: 'Canvas X position' },
         y:       { type: 'number', description: 'Canvas Y position' },
-        width:   { type: 'number', description: 'Width in canvas units' },
-        height:  { type: 'number', description: 'Height in canvas units' },
-        content: { type: 'string', description: 'Text content of the element' },
+        width:   { type: 'number', description: 'Width in canvas units (images default 300)' },
+        height:  { type: 'number', description: 'Height in canvas units (images default 200)' },
+        content: { type: 'string', description: 'Text content (for text/note/heading/todo elements)' },
+        src:     { type: 'string', description: 'Image src URL from upload_image (for type=image)' },
         color:   { type: 'string', description: 'Optional color (note accent: blue|green|pink|purple|orange)' },
       },
       required: ['type', 'x', 'y'],
@@ -169,17 +183,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: 'text', text: JSON.stringify(matches, null, 2) }] };
       }
 
+      case 'upload_image': {
+        const res = await fetch(`${MCP_BASE}/upload`, {
+          method: 'POST',
+          headers: HEADERS,
+          body: JSON.stringify({ url: args.url, base64: args.base64, mimeType: args.mimeType, filename: args.filename }),
+        });
+        if (!res.ok) throw new Error(`Upload failed ${res.status}: ${await res.text()}`);
+        const data = await res.json();
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+
       case 'add_element': {
         const board = await readBoard();
+        const isImage = args.type === 'image';
         const id = 'el_mcp_' + Math.random().toString(36).slice(2, 10);
         const el = {
           id,
           type: args.type,
           x: args.x ?? 100,
           y: args.y ?? 100,
-          width:   args.width  ?? 200,
-          height:  args.height ?? 120,
+          width:  args.width  ?? (isImage ? 300 : 200),
+          height: args.height ?? (isImage ? 200 : 120),
           content: args.content ?? '',
+          ...(args.src   ? { src: args.src }     : {}),
           ...(args.color ? { color: args.color } : {}),
           zIndex: ((board.elements || []).length + 1),
         };
