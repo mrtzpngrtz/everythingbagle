@@ -753,6 +753,54 @@ app.delete('/api/boards/:name/share', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// ═══════════════════════════════════════════════════════
+//  BOARD API KEYS  (must be before /:owner/:name routes)
+// ═══════════════════════════════════════════════════════
+
+// List keys for a board
+app.get('/api/boards/:name/keys', requireAuth, (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
+  const username = req.session.user.username;
+  const keys = loadBoardKeys().filter(k => k.owner === username && k.board === name);
+  res.json(keys.map(({ keyHash, ...safe }) => safe));
+});
+
+// Generate key for a board
+app.post('/api/boards/:name/keys', requireAuth, (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
+  const username = req.session.user.username;
+  const boardPath = path.join(getUserBoardDir(username), name + '.json');
+  if (!fs.existsSync(boardPath)) return res.status(404).json({ error: 'Board not found' });
+  const { label = 'API Key', readOnly = false } = req.body;
+  const raw = 'ssbd_' + crypto.randomBytes(32).toString('hex');
+  const entry = {
+    id: 'key_' + crypto.randomBytes(6).toString('hex'),
+    keyHash: hashKey(raw),
+    owner: username,
+    board: name,
+    label: String(label).slice(0, 64),
+    readOnly: Boolean(readOnly),
+    createdAt: new Date().toISOString(),
+    lastUsed: null,
+  };
+  const keys = loadBoardKeys();
+  keys.push(entry);
+  saveBoardKeys(keys);
+  res.json({ ...entry, keyHash: undefined, key: raw });
+});
+
+// Revoke key
+app.delete('/api/boards/:name/keys/:keyId', requireAuth, (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
+  const username = req.session.user.username;
+  const keys = loadBoardKeys();
+  const idx = keys.findIndex(k => k.id === req.params.keyId && k.owner === username && k.board === name);
+  if (idx < 0) return res.status(404).json({ error: 'Key not found' });
+  keys.splice(idx, 1);
+  saveBoardKeys(keys);
+  res.json({ success: true });
+});
+
 // Board thumbnail (shared)
 app.get('/api/boards/:owner/:name/thumb', requireAuth, (req, res) => {
   const owner = req.params.owner.replace(/[^a-zA-Z0-9_-]/g, '');
@@ -843,51 +891,6 @@ app.post('/api/boards/:owner/:name', requireAuth, (req, res) => {
 // ═══════════════════════════════════════════════════════
 //  BOARD API KEYS
 // ═══════════════════════════════════════════════════════
-
-// List keys for a board
-app.get('/api/boards/:name/keys', requireAuth, (req, res) => {
-  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
-  const username = req.session.user.username;
-  const keys = loadBoardKeys().filter(k => k.owner === username && k.board === name);
-  res.json(keys.map(({ keyHash, ...safe }) => safe)); // never return hash
-});
-
-// Generate key for a board
-app.post('/api/boards/:name/keys', requireAuth, (req, res) => {
-  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
-  const username = req.session.user.username;
-  const boardPath = path.join(getUserBoardDir(username), name + '.json');
-  if (!fs.existsSync(boardPath)) return res.status(404).json({ error: 'Board not found' });
-
-  const { label = 'API Key', readOnly = false } = req.body;
-  const raw = 'ssbd_' + crypto.randomBytes(32).toString('hex');
-  const entry = {
-    id: 'key_' + crypto.randomBytes(6).toString('hex'),
-    keyHash: hashKey(raw),
-    owner: username,
-    board: name,
-    label: String(label).slice(0, 64),
-    readOnly: Boolean(readOnly),
-    createdAt: new Date().toISOString(),
-    lastUsed: null,
-  };
-  const keys = loadBoardKeys();
-  keys.push(entry);
-  saveBoardKeys(keys);
-  res.json({ ...entry, key: raw, keyHash: undefined }); // return raw key ONCE
-});
-
-// Revoke key
-app.delete('/api/boards/:name/keys/:keyId', requireAuth, (req, res) => {
-  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
-  const username = req.session.user.username;
-  const keys = loadBoardKeys();
-  const idx = keys.findIndex(k => k.id === req.params.keyId && k.owner === username && k.board === name);
-  if (idx < 0) return res.status(404).json({ error: 'Key not found' });
-  keys.splice(idx, 1);
-  saveBoardKeys(keys);
-  res.json({ success: true });
-});
 
 // ═══════════════════════════════════════════════════════
 //  MCP BOARD API  (authenticated via X-Board-Key header)
