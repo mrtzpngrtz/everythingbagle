@@ -95,7 +95,7 @@ function requireBoardKey(req, res, next) {
   const boardParam = (req.params.board || req.params.name || '').replace(/[^a-zA-Z0-9_-]/g, '');
   const ownerParam = (req.params.owner || '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (entry.board !== boardParam || (ownerParam && entry.owner !== ownerParam)) {
-    return res.status(403).json({ error: 'Key not valid for this board' });
+    return res.status(403).json({ error: 'Key not valid for this board', debug: { keyBoard: entry.board, keyOwner: entry.owner, reqBoard: boardParam, reqOwner: ownerParam } });
   }
   req.boardKeyEntry = entry;
   entry.lastUsed = new Date().toISOString();
