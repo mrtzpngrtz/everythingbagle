@@ -696,25 +696,22 @@ const Storage = {
         body.appendChild(meta);
         card.appendChild(body);
 
-        const actions = document.createElement('div');
-        actions.className = 'dash-card-actions';
+        // Footer with persistent action buttons
+        const footer = document.createElement('div');
+        footer.className = 'dash-card-footer';
 
-        const downloadBtn = document.createElement('button');
-        downloadBtn.className = 'dash-card-action';
-        downloadBtn.textContent = '↓';
-        downloadBtn.title = 'Download as JSON';
-        downloadBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.downloadBoardByName(board.name, isShared ? board.owner : null, downloadBtn);
-        });
-        actions.appendChild(downloadBtn);
+        const footerLeft = document.createElement('div');
+        footerLeft.className = 'dash-card-footer-left';
+
+        const footerRight = document.createElement('div');
+        footerRight.className = 'dash-card-footer-right';
 
         if (!isShared) {
           const pinned = this.getPinnedBoards();
           const isPinned = pinned.includes(board.name);
 
           const pinBtn = document.createElement('button');
-          pinBtn.className = 'dash-card-action' + (isPinned ? ' is-pinned' : '');
+          pinBtn.className = 'dash-card-btn' + (isPinned ? ' is-pinned' : '');
           pinBtn.textContent = '★';
           pinBtn.title = isPinned ? 'Unpin' : 'Pin to top';
           pinBtn.addEventListener('click', (e) => {
@@ -722,27 +719,30 @@ const Storage = {
             this.togglePin(board.name);
             this.refreshDashboard();
           });
+          footerLeft.appendChild(pinBtn);
 
           const keyBtn = document.createElement('button');
-          keyBtn.className = 'dash-card-action';
+          keyBtn.className = 'dash-card-btn';
           keyBtn.textContent = '⚿';
           keyBtn.title = 'MCP / API Keys';
           keyBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.openKeysModal(board.name);
           });
+          footerLeft.appendChild(keyBtn);
 
           const renameBtn = document.createElement('button');
-          renameBtn.className = 'dash-card-action';
+          renameBtn.className = 'dash-card-btn';
           renameBtn.textContent = '✎';
           renameBtn.title = 'Rename';
           renameBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.renameBoard(board.name).then(() => this.refreshDashboard());
           });
+          footerRight.appendChild(renameBtn);
 
           const deleteBtn = document.createElement('button');
-          deleteBtn.className = 'dash-card-action danger';
+          deleteBtn.className = 'dash-card-btn danger';
           deleteBtn.textContent = '✕';
           deleteBtn.title = 'Delete';
           deleteBtn.addEventListener('click', async (e) => {
@@ -752,14 +752,22 @@ const Storage = {
               this.refreshDashboard();
             }
           });
-
-          actions.appendChild(pinBtn);
-          actions.appendChild(keyBtn);
-          actions.appendChild(renameBtn);
-          actions.appendChild(deleteBtn);
+          footerRight.appendChild(deleteBtn);
         }
 
-        card.appendChild(actions);
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'dash-card-btn';
+        downloadBtn.textContent = '↓';
+        downloadBtn.title = 'Download as JSON';
+        downloadBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.downloadBoardByName(board.name, isShared ? board.owner : null, downloadBtn);
+        });
+        footerRight.appendChild(downloadBtn);
+
+        footer.appendChild(footerLeft);
+        footer.appendChild(footerRight);
+        card.appendChild(footer);
 
         card.addEventListener('click', () => {
           const params = new URLSearchParams({ board: board.name });
