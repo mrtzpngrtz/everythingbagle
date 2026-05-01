@@ -78,7 +78,7 @@ const Connections = {
             fromAnchor: fromData?.type === 'pin' ? 'center' : this.drawing.fromAnchor,
             to: toId,
             toAnchor: toAnchor,
-            style: isThread ? 'line' : 'arrow',
+            style: isThread ? 'line' : 'curve',
             label: '',
           });
           if (isThread) this.startPhysicsLoop();
@@ -357,6 +357,21 @@ const Connections = {
       const x2 = toScreen.x - rect.left;
       const y2 = toScreen.y - rect.top;
 
+      const deleteConn = (e) => {
+        e.stopPropagation();
+        App.connections = App.connections.filter(c => c.id !== conn.id);
+        this.render();
+        App.saveState();
+      };
+      const cycleStyle = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const styles = ['curve', 'arrow', 'line'];
+        conn.style = styles[(styles.indexOf(conn.style) + 1) % styles.length];
+        this.render();
+        App.saveState();
+      };
+
       if (conn.style === 'curve') {
         const dx = Math.abs(x2 - x1) * 0.5;
         const cp1x = conn.fromAnchor === 'right' ? x1 + dx : conn.fromAnchor === 'left' ? x1 - dx : x1;
@@ -364,11 +379,11 @@ const Connections = {
         const cp2x = conn.toAnchor === 'right' ? x2 + dx : conn.toAnchor === 'left' ? x2 - dx : x2;
         const cp2y = conn.toAnchor === 'bottom' ? y2 + dx : conn.toAnchor === 'top' ? y2 - dx : y2;
         const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
-        // Wide invisible hit area
         const hitPath = Utils.createSVGElement('path', { d: pathD, 'data-connection-id': conn.id });
         hitPath.setAttribute('stroke', 'transparent'); hitPath.setAttribute('stroke-width', '16'); hitPath.setAttribute('fill', 'none'); hitPath.style.pointerEvents = 'stroke'; hitPath.style.cursor = 'pointer';
+        hitPath.addEventListener('dblclick', deleteConn);
+        hitPath.addEventListener('contextmenu', cycleStyle);
         this.svg.appendChild(hitPath);
-        // Visible line
         const path = Utils.createSVGElement('path', {
           d: pathD, class: 'connection-line',
           'marker-end': 'url(#arrowhead)', 'data-connection-id': conn.id,
@@ -376,11 +391,11 @@ const Connections = {
         path.style.pointerEvents = 'none';
         this.svg.appendChild(path);
       } else {
-        // Wide invisible hit area
         const hitLine = Utils.createSVGElement('line', { x1, y1, x2, y2, 'data-connection-id': conn.id });
         hitLine.setAttribute('stroke', 'transparent'); hitLine.setAttribute('stroke-width', '16'); hitLine.style.pointerEvents = 'stroke'; hitLine.style.cursor = 'pointer';
+        hitLine.addEventListener('dblclick', deleteConn);
+        hitLine.addEventListener('contextmenu', cycleStyle);
         this.svg.appendChild(hitLine);
-        // Visible line
         const line = Utils.createSVGElement('line', {
           x1, y1, x2, y2, class: 'connection-line',
           'marker-end': conn.style === 'arrow' ? 'url(#arrowhead)' : '',
@@ -399,30 +414,6 @@ const Connections = {
       }
     });
 
-    // Bind events on static connection lines
-    this.svg.querySelectorAll('.connection-line:not([data-connection-id])').forEach(() => {});
-    this.svg.querySelectorAll('.connection-line').forEach(line => {
-      if (line.closest('#thread-group')) return; // threads handle their own events
-      line.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        const id = line.getAttribute('data-connection-id');
-        App.connections = App.connections.filter(c => c.id !== id);
-        this.render();
-        App.saveState();
-      });
-      line.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const id = line.getAttribute('data-connection-id');
-        const conn = App.connections.find(c => c.id === id);
-        if (conn) {
-          const styles = ['arrow', 'line', 'curve'];
-          conn.style = styles[(styles.indexOf(conn.style) + 1) % styles.length];
-          this.render();
-          App.saveState();
-        }
-      });
-    });
 
     // Thread group stays on top
     this.svg.appendChild(this._threadGroup);
