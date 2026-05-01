@@ -1224,6 +1224,22 @@ body.dark .util-toast {
 .canvas-element.img-pan-mode .el-image:active { cursor: grabbing; }
 .canvas-element.img-pan-mode .resize-handle { opacity: 0.3; pointer-events: none; }
 
+/* --- Frame / Crop Mode --- */
+.canvas-element.img-frame-mode .el-image {
+  outline: 2px dashed var(--accent) !important;
+  outline-offset: -2px;
+}
+.crop-handle {
+  position: absolute;
+  z-index: 20;
+  background: var(--accent, #0066ff);
+  pointer-events: all;
+}
+.crop-handle-top    { left: 0; right: 0; height: 3px; cursor: ns-resize; }
+.crop-handle-bottom { left: 0; right: 0; height: 3px; cursor: ns-resize; top: auto; }
+.crop-handle-left   { top: 0; bottom: 0; width: 3px; cursor: ew-resize; }
+.crop-handle-right  { top: 0; bottom: 0; width: 3px; cursor: ew-resize; left: auto; }
+
 /* --- Icon Element --- */
 .el-icon {
   display: flex;
@@ -1458,6 +1474,11 @@ body.dark .prop-tag-input { background: #1A1A1A; border-color: #333; color: #E0E
 .prop-btn:hover {
   border-color: var(--black);
   color: var(--black);
+}
+.prop-btn.active {
+  background: var(--black);
+  border-color: var(--black);
+  color: var(--white);
 }
 
 .prop-ratio-row {

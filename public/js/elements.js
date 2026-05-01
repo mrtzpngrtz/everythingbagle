@@ -4,6 +4,7 @@ const Elements = {
   dragging: null,
   resizing: null,
   imgPanning: null,
+  cropDragging: null,
   dragStart: null,
   resizeStart: null,
   clipboard: [],
@@ -422,6 +423,44 @@ const Elements = {
     document.getElementById('properties-panel').classList.add('hidden');
   },
 
+  enterFrameMode(id) {
+    document.querySelectorAll('.canvas-element.img-frame-mode').forEach(el => {
+      if (el.dataset.id !== id) this.exitFrameMode(el.dataset.id, false);
+    });
+    const dom = document.querySelector(`.canvas-element[data-id="${id}"]`);
+    if (!dom) return;
+    dom.classList.add('img-pan-mode', 'img-frame-mode');
+    this.updateCropHandles(id);
+  },
+
+  updateCropHandles(id) {
+    const dom = document.querySelector(`.canvas-element[data-id="${id}"]`);
+    if (!dom) return;
+    dom.querySelectorAll('.crop-handle').forEach(h => h.remove());
+    const data = this.getData(id);
+    if (!data) return;
+    const sides = [
+      { cls: 'crop-handle-top',    style: `top:${data.cropTop||0}%` },
+      { cls: 'crop-handle-bottom', style: `bottom:${data.cropBottom||0}%` },
+      { cls: 'crop-handle-left',   style: `left:${data.cropLeft||0}%` },
+      { cls: 'crop-handle-right',  style: `right:${data.cropRight||0}%` },
+    ];
+    sides.forEach(({ cls, style }) => {
+      const h = document.createElement('div');
+      h.className = `crop-handle ${cls}`;
+      h.setAttribute('style', style);
+      dom.appendChild(h);
+    });
+  },
+
+  exitFrameMode(id, save = true) {
+    const dom = document.querySelector(`.canvas-element[data-id="${id}"]`);
+    if (!dom) return;
+    dom.classList.remove('img-pan-mode', 'img-frame-mode');
+    dom.querySelectorAll('.crop-handle').forEach(h => h.remove());
+    if (save) App.saveState();
+  },
+
   select(id, additive = false) {
     if (!additive) this.clearSelection();
     if (!this.selected.includes(id)) {
@@ -749,6 +788,27 @@ const Elements = {
         return;
       }
 
+      // Crop handle drag (frame mode)
+      if (tool === 'select' && target.classList.contains('crop-handle') && elementDom) {
+        const id = elementDom.dataset.id;
+        const data = this.getData(id);
+        if (data) {
+          const handleType = ['top','bottom','left','right'].find(t => target.classList.contains('crop-handle-' + t));
+          this.cropDragging = {
+            id, handleType,
+            startX: e.clientX, startY: e.clientY,
+            origTop:    data.cropTop    || 0,
+            origBottom: data.cropBottom || 0,
+            origLeft:   data.cropLeft   || 0,
+            origRight:  data.cropRight  || 0,
+            elemW: data.width,
+            elemH: data.height,
+          };
+          e.stopPropagation();
+          return;
+        }
+      }
+
       // Image pan mode: drag inside a pan-mode image moves its content
       if (tool === 'select' && elementDom && elementDom.classList.contains('img-pan-mode')) {
         const id = elementDom.dataset.id;
@@ -938,6 +998,21 @@ const Elements = {
         return;
       }
 
+      if (this.cropDragging) {
+        const d = this.cropDragging;
+        const dx = (e.clientX - d.startX) / (d.elemW * Canvas.zoom) * 100;
+        const dy = (e.clientY - d.startY) / (d.elemH * Canvas.zoom) * 100;
+        const clamp = v => Math.max(0, Math.min(90, v));
+        const updates = {};
+        if (d.handleType === 'top')    updates.cropTop    = clamp(d.origTop    + dy);
+        if (d.handleType === 'bottom') updates.cropBottom = clamp(d.origBottom - dy);
+        if (d.handleType === 'left')   updates.cropLeft   = clamp(d.origLeft   + dx);
+        if (d.handleType === 'right')  updates.cropRight  = clamp(d.origRight  - dx);
+        this.updateElement(d.id, updates);
+        this.updateCropHandles(d.id);
+        return;
+      }
+
       if (this.imgPanning) {
         const dx = (e.clientX - this.imgPanning.startX) / Canvas.zoom;
         const dy = (e.clientY - this.imgPanning.startY) / Canvas.zoom;
@@ -1069,6 +1144,12 @@ const Elements = {
     window.addEventListener('mouseup', (_e) => {
       if (this.rotating) {
         this.rotating = null;
+        App.saveState();
+        return;
+      }
+
+      if (this.cropDragging) {
+        this.cropDragging = null;
         App.saveState();
         return;
       }
@@ -1210,11 +1291,15 @@ const Elements = {
       // todo double-click is handled by Todos.bindEvents
     });
 
-    // Exit image pan mode when clicking elsewhere
+    // Exit image pan mode / frame mode when clicking elsewhere
     container.addEventListener('mousedown', (e) => {
-      const panEls = container.querySelectorAll('.canvas-element.img-pan-mode');
+      const panEls = container.querySelectorAll('.canvas-element.img-pan-mode:not(.img-frame-mode)');
       panEls.forEach(el => {
         if (!el.contains(e.target)) el.classList.remove('img-pan-mode');
+      });
+      const frameEls = container.querySelectorAll('.canvas-element.img-frame-mode');
+      frameEls.forEach(el => {
+        if (!el.contains(e.target)) this.exitFrameMode(el.dataset.id, false);
       });
     }, true); // capture phase so it fires before other handlers
 

@@ -130,6 +130,8 @@ const Properties = {
 
     if (data.type === 'image') {
       const ct = data.cropTop || 0, cr = data.cropRight || 0, cb = data.cropBottom || 0, cl = data.cropLeft || 0;
+      const hasCrop = ct || cr || cb || cl;
+      const isFrameMode = !!document.querySelector(`.canvas-element.img-frame-mode[data-id="${data.id}"]`);
       const rot = data.rotation || 0;
       const tags = data.tags || [];
       html += `
@@ -168,26 +170,10 @@ const Properties = {
           </div>
         </div>
         <div class="prop-group">
-          <div class="prop-label">06 — CROP</div>
-          <div class="prop-slider-row">
-            <span class="prop-slider-label">↑</span>
-            <input class="prop-slider" type="range" data-prop="cropTop" value="${ct}" min="0" max="90" />
-            <span class="prop-slider-value" data-display="cropTop">${ct}</span>
-          </div>
-          <div class="prop-slider-row">
-            <span class="prop-slider-label">↓</span>
-            <input class="prop-slider" type="range" data-prop="cropBottom" value="${cb}" min="0" max="90" />
-            <span class="prop-slider-value" data-display="cropBottom">${cb}</span>
-          </div>
-          <div class="prop-slider-row">
-            <span class="prop-slider-label">←</span>
-            <input class="prop-slider" type="range" data-prop="cropLeft" value="${cl}" min="0" max="90" />
-            <span class="prop-slider-value" data-display="cropLeft">${cl}</span>
-          </div>
-          <div class="prop-slider-row">
-            <span class="prop-slider-label">→</span>
-            <input class="prop-slider" type="range" data-prop="cropRight" value="${cr}" min="0" max="90" />
-            <span class="prop-slider-value" data-display="cropRight">${cr}</span>
+          <div class="prop-label">06 — FRAME</div>
+          <div class="prop-btn-row">
+            <button class="prop-btn prop-frame-edit-btn${isFrameMode ? ' active' : ''}">${isFrameMode ? 'DONE' : 'EDIT FRAME'}</button>
+            ${hasCrop ? `<button class="prop-btn prop-frame-reset-btn">RESET</button>` : ''}
           </div>
         </div>
       `;
@@ -353,6 +339,32 @@ const Properties = {
         this.show(Elements.getData(data.id));
       });
     });
+
+    // Bind frame edit / reset buttons
+    const frameEditBtn = content.querySelector('.prop-frame-edit-btn');
+    if (frameEditBtn) {
+      frameEditBtn.addEventListener('click', () => {
+        const active = !!document.querySelector(`.canvas-element.img-frame-mode[data-id="${data.id}"]`);
+        if (active) {
+          Elements.exitFrameMode(data.id, true);
+          frameEditBtn.textContent = 'EDIT FRAME';
+          frameEditBtn.classList.remove('active');
+        } else {
+          Elements.enterFrameMode(data.id);
+          frameEditBtn.textContent = 'DONE';
+          frameEditBtn.classList.add('active');
+        }
+      });
+    }
+    const frameResetBtn = content.querySelector('.prop-frame-reset-btn');
+    if (frameResetBtn) {
+      frameResetBtn.addEventListener('click', () => {
+        Elements.updateElement(data.id, { cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 });
+        Elements.updateCropHandles(data.id);
+        App.saveState();
+        this.show(Elements.getData(data.id));
+      });
+    }
 
     // Bind color options
     content.querySelectorAll('.color-option').forEach(opt => {
