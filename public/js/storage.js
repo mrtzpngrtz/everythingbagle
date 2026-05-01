@@ -20,7 +20,7 @@ const Storage = {
     const idx = pins.indexOf(name);
     if (idx >= 0) pins.splice(idx, 1); else pins.unshift(name);
     this.setPinnedBoards(pins);
-    this.refreshDropdownList();
+    if (document.getElementById('board-dropdown-list')) this.refreshDropdownList();
   },
 
   init() {
@@ -156,45 +156,15 @@ const Storage = {
         left.appendChild(nameSpan);
         left.appendChild(info);
 
-        const actions = document.createElement('div');
-        actions.className = 'board-actions';
-
-        // Pin button (always visible when pinned)
-        if (!isShared) {
-          const pinBtn = document.createElement('button');
-          pinBtn.className = 'board-action-btn board-action-pin' + (isPinned ? ' is-pinned' : '');
-          pinBtn.textContent = '★';
-          pinBtn.title = isPinned ? 'Unpin' : 'Pin to top';
-          pinBtn.addEventListener('click', (e) => { e.stopPropagation(); this.togglePin(board.name); });
-          actions.appendChild(pinBtn);
-
-          const keyBtn = document.createElement('button');
-          keyBtn.className = 'board-action-btn board-action-key';
-          keyBtn.textContent = '⚿';
-          keyBtn.title = 'API Keys';
-          keyBtn.addEventListener('click', (e) => { e.stopPropagation(); this.openKeysModal(board.name); });
-          actions.appendChild(keyBtn);
-
-          const renameBtn = document.createElement('button');
-          renameBtn.className = 'board-action-btn';
-          renameBtn.textContent = '✎';
-          renameBtn.title = 'Rename';
-          renameBtn.addEventListener('click', (e) => { e.stopPropagation(); this.renameBoard(board.name); });
-          actions.appendChild(renameBtn);
-
-          const deleteBtn = document.createElement('button');
-          deleteBtn.className = 'board-action-btn board-action-delete';
-          deleteBtn.textContent = '✕';
-          deleteBtn.title = 'Delete';
-          deleteBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (await Dialog.confirm(`Delete board "${board.name}"?`)) this.deleteBoard(board.name);
-          });
-          actions.appendChild(deleteBtn);
+        if (isPinned) {
+          const pinDot = document.createElement('span');
+          pinDot.className = 'board-pin-dot';
+          pinDot.textContent = '★';
+          pinDot.title = 'Pinned';
+          item.appendChild(pinDot);
         }
 
         item.appendChild(left);
-        item.appendChild(actions);
 
         left.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -740,6 +710,28 @@ const Storage = {
         actions.appendChild(downloadBtn);
 
         if (!isShared) {
+          const pinned = this.getPinnedBoards();
+          const isPinned = pinned.includes(board.name);
+
+          const pinBtn = document.createElement('button');
+          pinBtn.className = 'dash-card-action' + (isPinned ? ' is-pinned' : '');
+          pinBtn.textContent = '★';
+          pinBtn.title = isPinned ? 'Unpin' : 'Pin to top';
+          pinBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.togglePin(board.name);
+            this.refreshDashboard();
+          });
+
+          const keyBtn = document.createElement('button');
+          keyBtn.className = 'dash-card-action';
+          keyBtn.textContent = '⚿';
+          keyBtn.title = 'MCP / API Keys';
+          keyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.openKeysModal(board.name);
+          });
+
           const renameBtn = document.createElement('button');
           renameBtn.className = 'dash-card-action';
           renameBtn.textContent = '✎';
@@ -761,6 +753,8 @@ const Storage = {
             }
           });
 
+          actions.appendChild(pinBtn);
+          actions.appendChild(keyBtn);
           actions.appendChild(renameBtn);
           actions.appendChild(deleteBtn);
         }
