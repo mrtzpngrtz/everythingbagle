@@ -95,7 +95,7 @@ function requireBoardKey(req, res, next) {
   const boardParam = (req.params.board || req.params.name || '').replace(/[^a-zA-Z0-9_-]/g, '');
   const ownerParam = (req.params.owner || '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (entry.board !== boardParam || (ownerParam && entry.owner !== ownerParam)) {
-    return res.status(403).json({ error: 'Key not valid for this board', debug: { keyBoard: entry.board, keyOwner: entry.owner, reqBoard: boardParam, reqOwner: ownerParam } });
+    return res.status(403).json({ error: 'Key not valid for this board' });
   }
   req.boardKeyEntry = entry;
   entry.lastUsed = new Date().toISOString();
@@ -281,21 +281,11 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
     return res.json({ requiresTwoFactor: true });
   }
 
-  req.session.user = {
-    id: user.id,
-    username: user.username,
-    displayName: user.displayName,
-    role: user.role,
-  };
-
-  res.json({
-    success: true,
-    user: {
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      role: user.role,
-    },
+  const userData = { id: user.id, username: user.username, displayName: user.displayName, role: user.role };
+  req.session.regenerate((err) => {
+    if (err) return res.status(500).json({ error: 'Session error' });
+    req.session.user = userData;
+    res.json({ success: true, user: userData });
   });
 });
 
@@ -415,17 +405,11 @@ app.post('/api/auth/2fa/verify-login', twoFaLimiter, (req, res) => {
   const isValid = totpVerifySync({ token: String(code).replace(/\s/g, ''), secret: user.twoFactorSecret });
   if (!isValid) return res.status(401).json({ error: 'Invalid code' });
 
-  delete req.session.pendingTwoFactor;
-  req.session.user = {
-    id: user.id,
-    username: user.username,
-    displayName: user.displayName,
-    role: user.role,
-  };
-
-  res.json({
-    success: true,
-    user: { id: user.id, username: user.username, displayName: user.displayName, role: user.role },
+  const userData2fa = { id: user.id, username: user.username, displayName: user.displayName, role: user.role };
+  req.session.regenerate((err) => {
+    if (err) return res.status(500).json({ error: 'Session error' });
+    req.session.user = userData2fa;
+    res.json({ success: true, user: userData2fa });
   });
 });
 
@@ -517,12 +501,18 @@ app.get('/api/users', requireAuth, (req, res) => {
 // ═══════════════════════════════════════════════════════
 //  FILE UPLOAD (authenticated)
 // ═══════════════════════════════════════════════════════
+const MIME_EXT = {
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
+  'image/webp': '.webp', 'image/avif': '.avif', 'application/pdf': '.pdf',
+  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/ogg': '.ogv',
+  'text/plain': '.txt', 'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+};
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => {
     const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, unique + ext);
+    cb(null, unique + (MIME_EXT[file.mimetype] || '.bin'));
   },
 });
 const ALLOWED_UPLOAD_MIME = new Set([
