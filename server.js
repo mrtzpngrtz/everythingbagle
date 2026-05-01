@@ -14,6 +14,7 @@ const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHe
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many registration attempts, try again later' } });
 const twoFaLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many 2FA attempts, try again later' } });
 const llmLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests, slow down' } });
+const mcpLimiter = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { error: 'MCP rate limit exceeded' } });
 
 // ── Minimal TOTP (RFC 6238) — no external dependency ──────────────────────
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -72,6 +73,35 @@ const PORT = 3000;
 // ═══════════════════════════════════════════════════════
 const USERS_FILE = path.join(__dirname, 'data', '_users.json');
 const SETTINGS_FILE = path.join(__dirname, 'data', '_settings.json');
+const BOARD_KEYS_FILE = path.join(__dirname, 'data', '_board_keys.json');
+
+function loadBoardKeys() {
+  if (!fs.existsSync(BOARD_KEYS_FILE)) return [];
+  try { return JSON.parse(fs.readFileSync(BOARD_KEYS_FILE, 'utf8')); } catch { return []; }
+}
+function saveBoardKeys(keys) {
+  fs.writeFileSync(BOARD_KEYS_FILE, JSON.stringify(keys, null, 2));
+}
+function hashKey(raw) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+function requireBoardKey(req, res, next) {
+  const raw = req.headers['x-board-key'];
+  if (!raw) return res.status(401).json({ error: 'Missing X-Board-Key header' });
+  const hash = hashKey(raw);
+  const keys = loadBoardKeys();
+  const entry = keys.find(k => k.keyHash === hash);
+  if (!entry) return res.status(401).json({ error: 'Invalid key' });
+  const boardParam = (req.params.board || req.params.name || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const ownerParam = (req.params.owner || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (entry.board !== boardParam || (ownerParam && entry.owner !== ownerParam)) {
+    return res.status(403).json({ error: 'Key not valid for this board' });
+  }
+  req.boardKeyEntry = entry;
+  entry.lastUsed = new Date().toISOString();
+  saveBoardKeys(keys);
+  next();
+}
 
 function loadSettings() {
   if (!fs.existsSync(SETTINGS_FILE)) return { registrationEnabled: true };
@@ -807,6 +837,87 @@ app.post('/api/boards/:owner/:name', requireAuth, (req, res) => {
 
   const data = { ...req.body, meta: { created: existing.meta?.created || new Date().toISOString(), lastEdit: new Date().toISOString(), elementCount: (req.body.elements || []).length, owner, collaborators: collabs } };
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  res.json({ success: true });
+});
+
+// ═══════════════════════════════════════════════════════
+//  BOARD API KEYS
+// ═══════════════════════════════════════════════════════
+
+// List keys for a board
+app.get('/api/boards/:name/keys', requireAuth, (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
+  const username = req.session.user.username;
+  const keys = loadBoardKeys().filter(k => k.owner === username && k.board === name);
+  res.json(keys.map(({ keyHash, ...safe }) => safe)); // never return hash
+});
+
+// Generate key for a board
+app.post('/api/boards/:name/keys', requireAuth, (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
+  const username = req.session.user.username;
+  const boardPath = path.join(getUserBoardDir(username), name + '.json');
+  if (!fs.existsSync(boardPath)) return res.status(404).json({ error: 'Board not found' });
+
+  const { label = 'API Key', readOnly = false } = req.body;
+  const raw = 'ssbd_' + crypto.randomBytes(32).toString('hex');
+  const entry = {
+    id: 'key_' + crypto.randomBytes(6).toString('hex'),
+    keyHash: hashKey(raw),
+    owner: username,
+    board: name,
+    label: String(label).slice(0, 64),
+    readOnly: Boolean(readOnly),
+    createdAt: new Date().toISOString(),
+    lastUsed: null,
+  };
+  const keys = loadBoardKeys();
+  keys.push(entry);
+  saveBoardKeys(keys);
+  res.json({ ...entry, key: raw, keyHash: undefined }); // return raw key ONCE
+});
+
+// Revoke key
+app.delete('/api/boards/:name/keys/:keyId', requireAuth, (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
+  const username = req.session.user.username;
+  const keys = loadBoardKeys();
+  const idx = keys.findIndex(k => k.id === req.params.keyId && k.owner === username && k.board === name);
+  if (idx < 0) return res.status(404).json({ error: 'Key not found' });
+  keys.splice(idx, 1);
+  saveBoardKeys(keys);
+  res.json({ success: true });
+});
+
+// ═══════════════════════════════════════════════════════
+//  MCP BOARD API  (authenticated via X-Board-Key header)
+//  Routes: /mcp/:owner/:board/...
+// ═══════════════════════════════════════════════════════
+
+// Read full board
+app.get('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
+  req.params.name = req.params.board; req.params.owner = req.params.owner; next();
+}, requireBoardKey, (req, res) => {
+  const filePath = path.join(__dirname, 'data', 'boards', req.params.owner, req.params.board + '.json');
+  if (!fs.existsSync(filePath)) return res.json({ elements: [], connections: [] });
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const { meta, ...safe } = data;
+  res.json({ ...safe, boardName: req.params.board, owner: req.params.owner });
+});
+
+// Write full board (read-only keys rejected)
+app.put('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
+  req.params.name = req.params.board; next();
+}, requireBoardKey, (req, res) => {
+  if (req.boardKeyEntry.readOnly) return res.status(403).json({ error: 'Key is read-only' });
+  const filePath = path.join(__dirname, 'data', 'boards', req.params.owner, req.params.board + '.json');
+  let meta = { created: new Date().toISOString(), owner: req.params.owner };
+  if (fs.existsSync(filePath)) {
+    try { const prev = JSON.parse(fs.readFileSync(filePath, 'utf8')); if (prev.meta) meta = prev.meta; } catch {}
+  }
+  meta.lastEdit = new Date().toISOString();
+  meta.elementCount = (req.body.elements || []).length;
+  fs.writeFileSync(filePath, JSON.stringify({ ...req.body, meta }, null, 2));
   res.json({ success: true });
 });
 

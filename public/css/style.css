@@ -1791,6 +1791,63 @@ body.dark .draw-opt-style.active { border-color: #E8E8E8; }
 
 .modal-sm { width: 340px; }
 
+/* ── Board API Keys Modal ── */
+.keys-empty {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--dark-grey); padding: 10px 0 6px;
+}
+.key-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0; border-bottom: var(--border-light);
+}
+.key-row-left { flex: 1; min-width: 0; }
+.key-label {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--black); display: block;
+}
+.key-meta {
+  font-family: var(--font-mono); font-size: 8px;
+  color: var(--dark-grey); letter-spacing: 0.5px;
+  margin-top: 2px; display: block;
+}
+.key-generate-form {
+  display: flex; flex-direction: column; gap: 8px;
+  padding-top: 12px; margin-top: 4px;
+  border-top: var(--border-light);
+}
+.key-label-input {
+  background: var(--off-white); border: var(--border);
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--black); padding: 6px 10px; outline: none;
+}
+.key-label-input:focus { border-color: var(--black); }
+.key-readonly-label {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--dark-grey); letter-spacing: 1px;
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+}
+.key-reveal {
+  display: flex; flex-direction: column; gap: 10px; padding: 4px 0;
+}
+.key-reveal-label {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--accent); letter-spacing: 1px;
+}
+.key-reveal-value {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--black); background: var(--off-white);
+  border: var(--border); padding: 8px 10px;
+  word-break: break-all; line-height: 1.5;
+}
+.key-reveal-hint {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--dark-grey);
+}
+.key-reveal-hint code { color: var(--black); }
+body.dark .key-reveal-value { background: #111; color: #E0E0E0; border-color: #333; }
+body.dark .key-label { color: #E0E0E0; }
+body.dark .key-label-input { background: #1A1A1A; border-color: #333; color: #E0E0E0; }
+
 .modal-header {
   display: flex;
   align-items: center;

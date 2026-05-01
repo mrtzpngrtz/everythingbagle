@@ -168,6 +168,13 @@ const Storage = {
           pinBtn.addEventListener('click', (e) => { e.stopPropagation(); this.togglePin(board.name); });
           actions.appendChild(pinBtn);
 
+          const keyBtn = document.createElement('button');
+          keyBtn.className = 'board-action-btn board-action-key';
+          keyBtn.textContent = '⚿';
+          keyBtn.title = 'API Keys';
+          keyBtn.addEventListener('click', (e) => { e.stopPropagation(); this.openKeysModal(board.name); });
+          actions.appendChild(keyBtn);
+
           const renameBtn = document.createElement('button');
           renameBtn.className = 'board-action-btn';
           renameBtn.textContent = '✎';
@@ -294,6 +301,84 @@ const Storage = {
     const el = document.getElementById('current-board-name');
     if (el) el.textContent = this.currentBoard;
     document.title = `SAMESAMEBUTDIFFERENT — ${this.currentBoard}`;
+  },
+
+  async openKeysModal(boardName) {
+    this.closeDropdown();
+    document.getElementById('board-keys-modal-name').textContent = boardName;
+    document.getElementById('board-keys-modal').classList.remove('hidden');
+    await this.renderKeysModal(boardName);
+    document.getElementById('board-keys-close').onclick = () =>
+      document.getElementById('board-keys-modal').classList.add('hidden');
+  },
+
+  async renderKeysModal(boardName) {
+    const body = document.getElementById('board-keys-body');
+    body.innerHTML = '<div style="padding:12px;font-family:var(--font-mono);font-size:10px;color:var(--dark-grey)">Loading…</div>';
+    const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/keys`);
+    const keys = await res.json();
+    body.innerHTML = '';
+
+    // Key list
+    if (keys.length === 0) {
+      body.innerHTML += '<div class="keys-empty">No keys yet</div>';
+    } else {
+      keys.forEach(k => {
+        const row = document.createElement('div');
+        row.className = 'key-row';
+        row.innerHTML = `
+          <div class="key-row-left">
+            <span class="key-label">${DOMPurify.sanitize(k.label)}</span>
+            <span class="key-meta">${k.readOnly ? 'READ-ONLY' : 'READ/WRITE'} · created ${this.formatTimeAgo(k.createdAt)}${k.lastUsed ? ' · used ' + this.formatTimeAgo(k.lastUsed) : ''}</span>
+          </div>
+          <button class="key-revoke-btn board-action-btn board-action-delete" data-id="${k.id}" title="Revoke">✕</button>
+        `;
+        row.querySelector('.key-revoke-btn').addEventListener('click', async () => {
+          if (!await Dialog.confirm(`Revoke key "${k.label}"?`)) return;
+          await fetch(`/api/boards/${encodeURIComponent(boardName)}/keys/${k.id}`, { method: 'DELETE' });
+          this.renderKeysModal(boardName);
+        });
+        body.appendChild(row);
+      });
+    }
+
+    // Generate new key form
+    const form = document.createElement('div');
+    form.className = 'key-generate-form';
+    form.innerHTML = `
+      <input type="text" class="key-label-input" placeholder="LABEL (e.g. Claude Desktop)" maxlength="64" />
+      <label class="key-readonly-label"><input type="checkbox" id="key-readonly-cb"> READ-ONLY</label>
+      <button class="btn-primary key-generate-btn">GENERATE KEY →</button>
+    `;
+    body.appendChild(form);
+
+    form.querySelector('.key-generate-btn').addEventListener('click', async () => {
+      const label = form.querySelector('.key-label-input').value.trim() || 'API Key';
+      const readOnly = form.querySelector('#key-readonly-cb').checked;
+      const r = await fetch(`/api/boards/${encodeURIComponent(boardName)}/keys`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label, readOnly }),
+      });
+      const data = await r.json();
+      // Show key once
+      body.innerHTML = '';
+      const reveal = document.createElement('div');
+      reveal.className = 'key-reveal';
+      reveal.innerHTML = `
+        <div class="key-reveal-label">COPY NOW — shown once</div>
+        <div class="key-reveal-value" id="key-reveal-value">${data.key}</div>
+        <div class="key-reveal-hint">Base URL for MCP: <code>${location.origin}</code></div>
+        <button class="btn-primary key-copy-btn">COPY KEY</button>
+        <button class="key-done-btn topbar-btn" style="margin-left:8px">DONE</button>
+      `;
+      reveal.querySelector('.key-copy-btn').addEventListener('click', () => {
+        navigator.clipboard.writeText(data.key);
+        reveal.querySelector('.key-copy-btn').textContent = 'COPIED ✓';
+      });
+      reveal.querySelector('.key-done-btn').addEventListener('click', () => this.renderKeysModal(boardName));
+      body.appendChild(reveal);
+    });
   },
 
   getBoardApiPath(name, owner) {
