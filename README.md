@@ -78,12 +78,34 @@ The core of **SAMESAMEBUTDIFFERENT** is built around an uncompromising focus on 
 
 ```bash
 npm install
-node server.js
+SESSION_SECRET=your-secret-here node server.js
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
 
 Default admin credentials: `admin` / `admin` — change immediately.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SESSION_SECRET` | Yes | Random string used to sign session cookies. Server exits on startup if not set. |
+| `NODE_ENV` | No | Set to `production` to enable secure cookie flag (requires HTTPS). |
+
+Generate a secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+
+### Docker / Self-hosted
+
+```bash
+docker build -t wollmilchsau .
+docker run -p 3000:3000 \
+  -e SESSION_SECRET=your-secret-here \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/uploads:/app/uploads \
+  wollmilchsau
+```
+
+Mount `data` and `uploads` as volumes to persist boards, users, and uploaded files across restarts.
 
 ## Stack
 
