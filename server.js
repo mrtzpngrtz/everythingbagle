@@ -965,7 +965,10 @@ app.put('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
   }
   meta.lastEdit = new Date().toISOString();
   meta.elementCount = (req.body.elements || []).length;
-  fs.writeFileSync(filePath, JSON.stringify({ ...req.body, meta }, null, 2));
+  const board = { ...req.body, meta };
+  fs.writeFileSync(filePath, JSON.stringify(board, null, 2));
+  const room = `${req.params.owner}/${req.params.board}`;
+  broadcastToRoom(room, null, { type: 'state', elements: board.elements || [], connections: board.connections || [] });
   res.json({ success: true });
 });
 
