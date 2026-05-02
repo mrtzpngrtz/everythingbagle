@@ -23,7 +23,6 @@ const Canvas = {
     this.panY = (window.innerHeight - 40) / 2;
 
     this.bindEvents();
-    this.bindTouchEvents();
     this.updateTransform();
     this.drawGrid();
   },

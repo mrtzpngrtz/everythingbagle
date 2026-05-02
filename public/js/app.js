@@ -47,8 +47,6 @@ const App = {
     // Logout
     this.initLogout();
 
-    this.initMobileMode();
-
     console.log('SAMESAMEBUTDIFFERENT v0.8.1 — Ready');
     console.log('Keys: V=Select H=Pan T=Text N=Note R=Rect A=Arrow D=Todo P=Draw K=Pin Space=Pan');
   },
@@ -111,73 +109,6 @@ const App = {
   },
 
 
-
-  initMobileMode() {
-    const isMobile = window.innerWidth <= 768;
-    if (isMobile) {
-      document.body.classList.add('mobile-mode');
-      this.setTool('pan');
-    }
-
-    const syncMobileBar = () => {
-      const tool = this.currentTool;
-      document.querySelectorAll('.mb-btn').forEach(b => b.classList.remove('active'));
-      if (tool === 'select') document.getElementById('mb-select')?.classList.add('active');
-    };
-
-    // Wrap setTool to sync mobile bar
-    const origSetTool = this.setTool.bind(this);
-    this.setTool = (tool) => {
-      origSetTool(tool);
-      syncMobileBar();
-    };
-
-    // Bottom bar buttons
-    document.getElementById('mb-fit')?.addEventListener('click', () => Canvas.fitAll());
-    document.getElementById('mb-select')?.addEventListener('click', () => this.setTool('select'));
-    document.getElementById('mb-undo')?.addEventListener('click', () => this.undo());
-
-    document.getElementById('mb-add')?.addEventListener('click', () => {
-      document.getElementById('mobile-add-sheet')?.classList.remove('hidden');
-    });
-    document.getElementById('mb-menu')?.addEventListener('click', () => {
-      document.getElementById('mobile-menu-sheet')?.classList.remove('hidden');
-    });
-
-    // Add sheet
-    document.querySelectorAll('#mobile-add-sheet .sheet-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.getElementById('mobile-add-sheet').classList.add('hidden');
-        this.setTool(btn.dataset.tool);
-      });
-    });
-    document.querySelector('#mobile-add-sheet .sheet-overlay')?.addEventListener('click', () => {
-      document.getElementById('mobile-add-sheet').classList.add('hidden');
-    });
-
-    // Menu sheet
-    document.querySelector('#mobile-menu-sheet .sheet-overlay')?.addEventListener('click', () => {
-      document.getElementById('mobile-menu-sheet').classList.add('hidden');
-    });
-    document.getElementById('mm-darkmode')?.addEventListener('click', () => {
-      document.getElementById('mobile-menu-sheet').classList.add('hidden');
-      document.getElementById('btn-darkmode').click();
-    });
-    document.getElementById('mm-save')?.addEventListener('click', () => {
-      document.getElementById('mobile-menu-sheet').classList.add('hidden');
-      document.getElementById('btn-save').click();
-    });
-    document.getElementById('mm-fit')?.addEventListener('click', () => {
-      document.getElementById('mobile-menu-sheet').classList.add('hidden');
-      Canvas.fitAll();
-    });
-    document.getElementById('mm-desktop')?.addEventListener('click', () => {
-      document.getElementById('mobile-menu-sheet').classList.add('hidden');
-      document.body.classList.remove('mobile-mode');
-    });
-
-    syncMobileBar();
-  },
 
   initDarkMode() {
     const saved = localStorage.getItem('wms-darkmode');
