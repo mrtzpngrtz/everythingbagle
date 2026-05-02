@@ -142,10 +142,10 @@ html, body {
 
 #zoom-level {
   font-family: var(--font-mono);
-  font-size: 28px;
+  font-size: 14px;
   font-weight: 300;
-  letter-spacing: -1px;
-  min-width: 44px;
+  letter-spacing: -0.5px;
+  min-width: 32px;
   text-align: center;
   color: var(--black);
   padding: 0 2px;
@@ -168,7 +168,7 @@ html, body {
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 1px;
-  padding: 6px 12px;
+  padding: 4px 8px;
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -264,11 +264,35 @@ body.dark .profile-section-divider { color: #888; }
   border-color: var(--accent);
 }
 
-/* === FILTER BAR === */
-#filter-bar {
+/* === FILTER PANEL (floating) === */
+#filter-panel {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 44px;
+  z-index: 800;
+  background: var(--white);
+  border-right: var(--border);
+  border-bottom: var(--border);
   display: flex;
   align-items: center;
   gap: 3px;
+  padding: 4px 8px;
+}
+
+#filter-panel.hidden {
+  display: none !important;
+}
+
+#btn-filter-toggle {
+  font-size: 9px;
+  padding: 3px 7px;
+  letter-spacing: 1px;
+}
+
+#btn-filter-toggle.has-active {
+  background: var(--accent);
+  color: var(--white);
+  border-color: var(--accent);
 }
 
 .filter-btn {
@@ -301,21 +325,63 @@ body.dark .profile-section-divider { color: #888; }
   display: none !important;
 }
 
-body.dark #filter-bar .filter-btn {
+body.dark #filter-panel {
+  background: #1A1A1A;
+  border-color: #333;
+}
+
+body.dark #filter-panel .filter-btn {
   border-color: #444;
   color: #888;
 }
 
-body.dark #filter-bar .filter-btn:hover {
+body.dark #filter-panel .filter-btn:hover {
   background: #E8E8E8;
   color: #1A1A1A;
   border-color: #E8E8E8;
 }
 
-body.dark #filter-bar .filter-btn.active {
+body.dark #filter-panel .filter-btn.active {
   background: var(--accent);
   color: #FFFFFF;
   border-color: var(--accent);
+}
+
+/* === FLOW MODE === */
+body.flow-mode #topbar,
+body.flow-mode #toolbar,
+body.flow-mode #minimap,
+body.flow-mode #properties-panel,
+body.flow-mode #suggestions-trigger,
+body.flow-mode #filter-panel,
+body.flow-mode #draw-options {
+  display: none !important;
+}
+
+body.flow-mode #canvas-container {
+  top: 0;
+  left: 0;
+}
+
+#flow-hint {
+  display: none;
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.7);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  padding: 4px 12px;
+  pointer-events: none;
+  user-select: none;
+}
+
+body.flow-mode #flow-hint {
+  display: block;
 }
 
 #btn-admin {
@@ -626,7 +692,7 @@ body.dark .board-dropdown-item .board-name {
   border-right: var(--border);
   display: flex;
   flex-direction: column;
-  width: 52px;
+  width: 44px;
   user-select: none;
 }
 
@@ -673,8 +739,8 @@ body.dark .board-dropdown-item .board-name {
 }
 
 .tool-btn {
-  width: 52px;
-  height: 40px;
+  width: 44px;
+  height: 34px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -749,7 +815,7 @@ body.dark .board-dropdown-item .board-name {
 #canvas-container {
   position: fixed;
   top: var(--topbar-h);
-  left: 52px; right: 0; bottom: 0;
+  left: 44px; right: 0; bottom: 0;
   overflow: hidden;
   cursor: default;
   background: var(--off-white);

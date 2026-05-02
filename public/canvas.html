@@ -36,13 +36,7 @@
         </div>
       </div>
       <div class="topbar-separator"></div>
-      <div id="filter-bar">
-        <button class="filter-btn" data-filter="image" title="Images">IMG</button>
-        <button class="filter-btn" data-filter="video" title="Videos">VID</button>
-        <button class="filter-btn" data-filter="text" title="Text &amp; Notes">TXT</button>
-        <button class="filter-btn" data-filter="chat" title="AI Chats">CHAT</button>
-        <button class="filter-btn" data-filter="thread" title="Threads / Arrows">THREAD</button>
-      </div>
+      <button id="btn-filter-toggle" class="topbar-btn" title="Toggle Filters">FILTER</button>
     </div>
     <div class="topbar-center">
       <div class="zoom-control">
@@ -73,6 +67,18 @@
       </div>
     </div>
   </div>
+
+  <!-- Filter Panel (floating, toggled) -->
+  <div id="filter-panel" class="hidden">
+    <button class="filter-btn" data-filter="image" title="Images">IMG</button>
+    <button class="filter-btn" data-filter="video" title="Videos">VID</button>
+    <button class="filter-btn" data-filter="text" title="Text &amp; Notes">TXT</button>
+    <button class="filter-btn" data-filter="chat" title="AI Chats">CHAT</button>
+    <button class="filter-btn" data-filter="thread" title="Threads / Arrows">THREAD</button>
+  </div>
+
+  <!-- Flow Mode Exit Hint -->
+  <div id="flow-hint">` — EXIT FLOW MODE</div>
 
   <!-- Vertical Tool Panel (Moveable) -->
   <div id="toolbar" style="left:16px;top:64px;">

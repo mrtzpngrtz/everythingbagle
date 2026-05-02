@@ -72,6 +72,14 @@ const App = {
   },
 
   initFilters() {
+    const toggleBtn = document.getElementById('btn-filter-toggle');
+    const panel = document.getElementById('filter-panel');
+    if (toggleBtn && panel) {
+      toggleBtn.addEventListener('click', () => {
+        panel.classList.toggle('hidden');
+      });
+    }
+
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const f = btn.dataset.filter;
@@ -83,6 +91,7 @@ const App = {
           btn.classList.add('active');
         }
         Elements.applyFilters();
+        if (toggleBtn) toggleBtn.classList.toggle('has-active', this.activeFilters.size > 0);
       });
     });
   },
