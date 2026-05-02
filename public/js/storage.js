@@ -296,7 +296,7 @@ const Storage = {
       const hint = document.createElement('div');
       hint.className = 'key-reveal-hint';
       hint.style.cssText = 'margin-bottom:12px;padding-bottom:10px;border-bottom:var(--border-light)';
-      hint.innerHTML = `MCP endpoint: <code style="user-select:all">${location.origin}/mcp/${encodeURIComponent(payload.owner || '')|| '…'}/${boardId}</code>`;
+      hint.innerHTML = `Claude.ai connector URL: <code style="user-select:all">${location.origin}/mcp/${encodeURIComponent(payload.owner || '') || '…'}/${boardId}</code>`;
       body.appendChild(hint);
     }
 
@@ -349,7 +349,7 @@ const Storage = {
       reveal.innerHTML = `
         <div class="key-reveal-label">COPY NOW — shown once</div>
         <div class="key-reveal-value" id="key-reveal-value">${data.key}</div>
-        <div class="key-reveal-hint">MCP endpoint: <code>${location.origin}/mcp/${data.owner || ''}/${boardId || ''}</code></div>
+        <div class="key-reveal-hint">Claude.ai connector URL: <code>${location.origin}/mcp/${data.owner || ''}/${boardId || ''}</code></div>
         <button class="btn-primary key-copy-btn">COPY KEY</button>
         <button class="key-done-btn topbar-btn" style="margin-left:8px">DONE</button>
       `;

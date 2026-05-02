@@ -1038,6 +1038,58 @@ app.put('/mcp/:owner/:boardId', mcpLimiter, (req, res, next) => {
   res.json({ success: true });
 });
 
+// Stable: MCP JSON-RPC endpoint by boardId — accepts Bearer token (OAuth/claude.ai) or X-Board-Key
+app.options('/mcp/:owner/:boardId', (req, res, next) => {
+  if (!UUID_RE.test(req.params.boardId)) return next('route');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Board-Key, Mcp-Session-Id');
+  res.sendStatus(204);
+});
+
+app.post('/mcp/:owner/:boardId', mcpLimiter, (req, res, next) => {
+  if (!UUID_RE.test(req.params.boardId)) return next('route');
+  next();
+}, mcpCors, async (req, res) => {
+  const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  const rawKey = bearer || req.headers['x-board-key'] || '';
+  const idVal = req.body?.id ?? null;
+  if (!rawKey) return res.status(401).json({ jsonrpc: '2.0', id: idVal, error: { code: -32001, message: 'Missing auth' } });
+  const hash = hashKey(rawKey);
+  const keys = loadBoardKeys();
+  const entry = keys.find(k => k.keyHash === hash);
+  if (!entry) return res.status(401).json({ jsonrpc: '2.0', id: idVal, error: { code: -32001, message: 'Invalid key' } });
+
+  const boardDir = path.join(__dirname, 'data', 'boards', req.params.owner);
+  let boardFilePath = null, boardName = null;
+  if (fs.existsSync(boardDir)) {
+    for (const f of fs.readdirSync(boardDir).filter(f => f.endsWith('.json'))) {
+      try { const d = JSON.parse(fs.readFileSync(path.join(boardDir, f), 'utf8')); if (d.meta?.boardId === req.params.boardId) { boardFilePath = path.join(boardDir, f); boardName = f.replace('.json', ''); break; } } catch {}
+    }
+  }
+  if (!boardFilePath) return res.status(404).json({ jsonrpc: '2.0', id: idVal, error: { code: -32002, message: 'Board not found' } });
+  if (entry.boardId && entry.boardId !== req.params.boardId) return res.status(403).json({ jsonrpc: '2.0', id: idVal, error: { code: -32003, message: 'Key not authorized for this board' } });
+
+  entry.lastUsed = new Date().toISOString(); saveBoardKeys(keys);
+  const { method, params, id } = req.body || {};
+  const ok  = (result) => res.json({ jsonrpc: '2.0', id: id ?? null, result });
+  const err = (code, message) => res.json({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
+  try {
+    if (method === 'initialize') return ok({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'ssbd', version: '1.0.0' } });
+    if (method === 'notifications/initialized') return res.status(202).end();
+    if (method === 'ping') return ok({});
+    if (method === 'tools/list') return ok({ tools: REMOTE_MCP_TOOLS });
+    if (method === 'tools/call') {
+      if (entry.readOnly && ['add_element','update_element','delete_element','push_todo_items','set_todo_item_done'].includes(params?.name)) return err(-32003, 'Key is read-only');
+      const result = await remoteMcpCallTool(params.name, params.arguments || {}, boardFilePath, entry.owner, boardName);
+      return ok({ content: result.content, isError: false });
+    }
+    return err(-32601, `Method not found: ${method}`);
+  } catch (e) {
+    return err(-32603, e.message);
+  }
+});
+
 // Legacy: read full board by name
 app.get('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
   req.params.name = req.params.board; req.params.owner = req.params.owner; next();
@@ -1197,7 +1249,8 @@ app.post('/oauth/authorize', mcpCors, express.urlencoded({ extended: false }), (
   if (!keys.find(k => k.keyHash === hash)) return res.status(401).send('Key not found');
   // Generate short-lived code
   const code = crypto.randomBytes(24).toString('hex');
-  _mcpAuthCodes.set(code, { key, expires: Date.now() + 5 * 60 * 1000 });
+  const { code_challenge, code_challenge_method } = req.body;
+  _mcpAuthCodes.set(code, { key, expires: Date.now() + 5 * 60 * 1000, code_challenge: code_challenge || '', code_challenge_method: code_challenge_method || 'S256' });
   const url = new URL(redirect_uri);
   url.searchParams.set('code', code);
   if (state) url.searchParams.set('state', state);
@@ -1206,12 +1259,19 @@ app.post('/oauth/authorize', mcpCors, express.urlencoded({ extended: false }), (
 
 // OAuth token exchange
 app.post('/oauth/token', mcpCors, express.json(), express.urlencoded({ extended: false }), (req, res) => {
-  const { grant_type, code } = req.body;
+  const { grant_type, code, code_verifier } = req.body;
   if (grant_type !== 'authorization_code') return res.status(400).json({ error: 'unsupported_grant_type' });
   const entry = _mcpAuthCodes.get(code);
   if (!entry || entry.expires < Date.now()) { _mcpAuthCodes.delete(code); return res.status(400).json({ error: 'invalid_grant' }); }
+  if (entry.code_challenge) {
+    if (!code_verifier) { _mcpAuthCodes.delete(code); return res.status(400).json({ error: 'invalid_grant', error_description: 'code_verifier required' }); }
+    const computed = entry.code_challenge_method === 'S256'
+      ? crypto.createHash('sha256').update(code_verifier).digest('base64url')
+      : code_verifier;
+    if (computed !== entry.code_challenge) { _mcpAuthCodes.delete(code); return res.status(400).json({ error: 'invalid_grant', error_description: 'code_verifier mismatch' }); }
+  }
   _mcpAuthCodes.delete(code);
-  res.json({ access_token: entry.key, token_type: 'bearer', expires_in: 0 });
+  res.json({ access_token: entry.key, token_type: 'bearer', expires_in: 7776000 });
 });
 
 // Cleanup expired codes periodically
