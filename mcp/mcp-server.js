@@ -4,10 +4,12 @@
  * Gives AI tools read/write access to a single SSBD board via a board API key.
  *
  * Config (env vars):
- *   SSBD_URL       — base URL of the SSBD server, e.g. https://boards.example.com
- *   SSBD_OWNER     — board owner username
- *   SSBD_BOARD     — board name
- *   SSBD_KEY       — board API key (ssbd_...)
+ *   SSBD_URL        — base URL of the SSBD server, e.g. https://boards.example.com
+ *   SSBD_OWNER      — board owner username
+ *   SSBD_BOARD_ID   — stable board UUID (shown in the API Keys modal — survives renames)
+ *   SSBD_KEY        — board API key (ssbd_...)
+ *
+ *   SSBD_BOARD      — legacy: board name (still works but breaks on rename)
  *
  * Claude Desktop config example:
  * {
@@ -18,7 +20,7 @@
  *       "env": {
  *         "SSBD_URL": "https://boards.example.com",
  *         "SSBD_OWNER": "mrtz",
- *         "SSBD_BOARD": "research",
+ *         "SSBD_BOARD_ID": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
  *         "SSBD_KEY": "ssbd_..."
  *       }
  *     }
@@ -30,17 +32,19 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
-const BASE_URL = (process.env.SSBD_URL || '').replace(/\/$/, '');
-const OWNER    = process.env.SSBD_OWNER || '';
-const BOARD    = process.env.SSBD_BOARD || '';
-const KEY      = process.env.SSBD_KEY   || '';
+const BASE_URL  = (process.env.SSBD_URL || '').replace(/\/$/, '');
+const OWNER     = process.env.SSBD_OWNER    || '';
+const BOARD_ID  = process.env.SSBD_BOARD_ID || '';
+const BOARD     = process.env.SSBD_BOARD    || '';  // legacy fallback
+const KEY       = process.env.SSBD_KEY      || '';
 
-if (!BASE_URL || !OWNER || !BOARD || !KEY) {
-  console.error('Missing required env vars: SSBD_URL, SSBD_OWNER, SSBD_BOARD, SSBD_KEY');
+if (!BASE_URL || !OWNER || (!BOARD_ID && !BOARD) || !KEY) {
+  console.error('Missing required env vars: SSBD_URL, SSBD_OWNER, SSBD_BOARD_ID (or SSBD_BOARD), SSBD_KEY');
   process.exit(1);
 }
 
-const MCP_BASE = `${BASE_URL}/mcp/${OWNER}/${BOARD}`;
+// Prefer stable UUID-based route; fall back to name-based for old configs
+const MCP_BASE = `${BASE_URL}/mcp/${OWNER}/${BOARD_ID || BOARD}`;
 const HEADERS  = { 'X-Board-Key': KEY, 'Content-Type': 'application/json' };
 
 async function apiFetch(path, options = {}) {
