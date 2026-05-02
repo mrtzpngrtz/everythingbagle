@@ -156,7 +156,7 @@ const Elements = {
         inner.className = 'el-text' + (data.boxed ? ' el-text--boxed' : '');
         inner.innerHTML = DOMPurify.sanitize(data.content || '', { ALLOWED_TAGS: ['b','strong','i','em','u','br'] });
         inner.style.fontSize = (data.fontSize || 14) + 'px';
-        inner.style.color = data.color || '#111111';
+        if (data.color) inner.style.color = data.color;
         inner.style.textAlign = data.textAlign || 'left';
         el.appendChild(inner);
         if (data.boxed) {
@@ -186,7 +186,7 @@ const Elements = {
         inner.className = 'el-heading';
         inner.innerHTML = DOMPurify.sanitize(data.content || '', { ALLOWED_TAGS: ['b','strong','i','em','u','br'] });
         inner.style.fontSize = (data.fontSize || 50) + 'px';
-        inner.style.color = data.color || '#111111';
+        if (data.color) inner.style.color = data.color;
         inner.style.fontWeight = data.fontWeight || '700';
         el.appendChild(inner);
         break;
