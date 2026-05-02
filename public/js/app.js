@@ -114,11 +114,7 @@ const App = {
 
   initMobileMode() {
     const isMobile = window.innerWidth <= 768;
-    const stored = localStorage.getItem('wms-mobilemode');
-    // Narrow screen → mobile unless user explicitly tapped "Desktop Mode"
-    // Wide screen   → desktop unless user explicitly opted in
-    const active = isMobile ? stored !== 'false' : stored === 'true';
-    if (active) {
+    if (isMobile) {
       document.body.classList.add('mobile-mode');
       this.setTool('pan');
     }
@@ -178,9 +174,6 @@ const App = {
     document.getElementById('mm-desktop')?.addEventListener('click', () => {
       document.getElementById('mobile-menu-sheet').classList.add('hidden');
       document.body.classList.remove('mobile-mode');
-      localStorage.setItem('wms-mobilemode', 'false');
-      // Re-centre canvas container via CSS defaults
-      Canvas.container.style.removeProperty('bottom');
     });
 
     syncMobileBar();
