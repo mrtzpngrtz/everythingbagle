@@ -149,6 +149,43 @@ const TOOLS = [
       required: ['id'],
     },
   },
+  {
+    name: 'push_todo_items',
+    description: 'Append one or more items to an existing todo list element without replacing existing items.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id:    { type: 'string', description: 'Todo element id' },
+        items: {
+          type: 'array',
+          description: 'Items to append',
+          items: {
+            type: 'object',
+            properties: {
+              text:      { type: 'string', description: 'Item text' },
+              done:      { type: 'boolean', description: 'Checked state (default false)' },
+              important: { type: 'boolean', description: 'Mark as important (default false)' },
+            },
+            required: ['text'],
+          },
+        },
+      },
+      required: ['id', 'items'],
+    },
+  },
+  {
+    name: 'set_todo_item_done',
+    description: 'Mark a todo item as done or not done by its index in the list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id:    { type: 'string',  description: 'Todo element id' },
+        index: { type: 'number',  description: 'Zero-based index of the item' },
+        done:  { type: 'boolean', description: 'New done state' },
+      },
+      required: ['id', 'index', 'done'],
+    },
+  },
 ];
 
 // ── Server setup ─────────────────────────────────────────────────────────────
@@ -238,6 +275,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (elements.length === before) throw new Error(`Element ${args.id} not found`);
         await writeBoard({ ...board, elements });
         return { content: [{ type: 'text', text: `Deleted element ${args.id}` }] };
+      }
+
+      case 'push_todo_items': {
+        const board = await readBoard();
+        const idx = (board.elements || []).findIndex(e => e.id === args.id);
+        if (idx < 0) throw new Error(`Element ${args.id} not found`);
+        const el = board.elements[idx];
+        if (el.type !== 'todo') throw new Error(`Element ${args.id} is not a todo list`);
+        const newItems = (args.items || []).map(i => ({
+          text: i.text,
+          done: i.done ?? false,
+          important: i.important ?? false,
+          assignee: '',
+        }));
+        const elements = [...board.elements];
+        elements[idx] = { ...el, items: [...(el.items || []), ...newItems] };
+        await writeBoard({ ...board, elements });
+        return { content: [{ type: 'text', text: `Added ${newItems.length} item(s) to "${el.title || 'Tasks'}"` }] };
+      }
+
+      case 'set_todo_item_done': {
+        const board = await readBoard();
+        const idx = (board.elements || []).findIndex(e => e.id === args.id);
+        if (idx < 0) throw new Error(`Element ${args.id} not found`);
+        const el = board.elements[idx];
+        if (el.type !== 'todo') throw new Error(`Element ${args.id} is not a todo list`);
+        const items = [...(el.items || [])];
+        if (args.index < 0 || args.index >= items.length) throw new Error(`Index ${args.index} out of range (list has ${items.length} items)`);
+        items[args.index] = { ...items[args.index], done: args.done };
+        const elements = [...board.elements];
+        elements[idx] = { ...el, items };
+        await writeBoard({ ...board, elements });
+        return { content: [{ type: 'text', text: `Item ${args.index} "${items[args.index].text}" marked ${args.done ? 'done' : 'undone'}` }] };
       }
 
       default:
