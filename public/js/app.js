@@ -115,7 +115,9 @@ const App = {
   initMobileMode() {
     const isMobile = window.innerWidth <= 768;
     const stored = localStorage.getItem('wms-mobilemode');
-    const active = stored === 'true' || (stored === null && isMobile);
+    // Narrow screen → mobile unless user explicitly tapped "Desktop Mode"
+    // Wide screen   → desktop unless user explicitly opted in
+    const active = isMobile ? stored !== 'false' : stored === 'true';
     if (active) {
       document.body.classList.add('mobile-mode');
       this.setTool('pan');
