@@ -77,7 +77,7 @@ const Storage = {
   },
 
   closeDropdown() {
-    document.getElementById('board-dropdown').classList.add('hidden');
+    document.getElementById('board-dropdown')?.classList.add('hidden');
     this.dropdownOpen = false;
   },
 
