@@ -4082,4 +4082,226 @@ body.dark .cal-status   { color: #E8E8E8; }
 body.dark .cal-popup    { background: #252525; border-color: #444; box-shadow: 2px 2px 0 #444; }
 body.dark .cal-popup-title { color: #E8E8E8; }
 
+/* ═══════════════════════════════════════════════════════
+   MOBILE MODE
+   ═══════════════════════════════════════════════════════ */
+
+body.mobile-mode #topbar,
+body.mobile-mode #toolbar,
+body.mobile-mode #minimap,
+body.mobile-mode #properties-panel,
+body.mobile-mode #suggestions-trigger,
+body.mobile-mode #filter-panel,
+body.mobile-mode #draw-options {
+  display: none !important;
+}
+
+body.mobile-mode #canvas-container {
+  top: 0;
+  left: 0;
+  bottom: 56px;
+}
+
+/* Mobile Bar */
+#mobile-bar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--white);
+  border-top: var(--border);
+  z-index: 9500;
+  align-items: center;
+  justify-content: space-around;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+body.mobile-mode #mobile-bar {
+  display: flex;
+}
+
+.mb-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  color: var(--dark-grey);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 1px;
+  padding: 6px 10px;
+  cursor: pointer;
+  min-width: 52px;
+  height: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mb-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.mb-btn.active {
+  color: var(--black);
+}
+
+.mb-btn.mb-add-btn {
+  color: var(--accent);
+}
+
+body.dark .mb-btn.mb-add-btn {
+  color: var(--accent);
+}
+
+/* Mobile Add / Menu Sheets */
+#mobile-add-sheet,
+#mobile-menu-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 9600;
+}
+
+.sheet-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.sheet-content {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border-radius: 12px 12px 0 0;
+  padding: 12px 16px 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--light-grey);
+  border-radius: 2px;
+  margin: 0 auto 14px;
+}
+
+.sheet-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--dark-grey);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.sheet-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--off-white);
+  border: var(--border-light);
+  color: var(--black);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 12px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sheet-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.sheet-btn:active {
+  background: var(--light-grey);
+}
+
+/* Mobile Menu List */
+.mobile-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  border-bottom: var(--border-light);
+  color: var(--black);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 14px 4px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-menu-item svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.mobile-menu-item:last-child {
+  border-bottom: none;
+}
+
+/* Dark mode */
+body.dark #mobile-bar {
+  background: #1A1A1A;
+  border-top-color: #333;
+}
+
+body.dark .mb-btn {
+  color: #555;
+}
+
+body.dark .mb-btn.active {
+  color: #E8E8E8;
+}
+
+body.dark .sheet-content {
+  background: #1A1A1A;
+}
+
+body.dark .sheet-handle {
+  background: #333;
+}
+
+body.dark .sheet-btn {
+  background: #252525;
+  border-color: #333;
+  color: #E8E8E8;
+}
+
+body.dark .sheet-btn:active {
+  background: #333;
+}
+
+body.dark .mobile-menu-item {
+  color: #E8E8E8;
+  border-color: #333;
+}
+
 body.dark .cal-day-bar { background: #E8E8E8; }

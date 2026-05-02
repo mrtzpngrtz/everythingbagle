@@ -23,6 +23,7 @@ const Canvas = {
     this.panY = (window.innerHeight - 40) / 2;
 
     this.bindEvents();
+    this.bindTouchEvents();
     this.updateTransform();
     this.drawGrid();
   },
@@ -123,6 +124,94 @@ const Canvas = {
       this.drawGrid();
       this.updateMinimap();
     }, 200));
+  },
+
+  bindTouchEvents() {
+    let touchStartX = 0, touchStartY = 0;
+    let lastTouchDist = 0, lastMidX = 0, lastMidY = 0;
+    let touchPanning = false;
+
+    this.container.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        touchPanning = false;
+        lastTouchDist = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
+        lastMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        lastMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      } else if (e.touches.length === 1) {
+        const tool = App.currentTool;
+        if (tool === 'select' || tool === 'pan') {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          touchPanning = false;
+        }
+      }
+    }, { passive: false });
+
+    this.container.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const dist = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        if (lastTouchDist > 0) {
+          const factor = dist / lastTouchDist;
+          const rect = this.container.getBoundingClientRect();
+          const cx = midX - rect.left;
+          const cy = midY - rect.top;
+          const newZoom = Utils.clamp(this.zoom * factor, this.minZoom, this.maxZoom);
+          const scale = newZoom / this.zoom;
+          this.panX = cx - (cx - this.panX) * scale + (midX - lastMidX);
+          this.panY = cy - (cy - this.panY) * scale + (midY - lastMidY);
+          this.zoom = newZoom;
+          this.updateTransform();
+          this.drawGrid();
+          Connections.render();
+          this.updateMinimap();
+        }
+        lastTouchDist = dist;
+        lastMidX = midX;
+        lastMidY = midY;
+      } else if (e.touches.length === 1) {
+        const tool = App.currentTool;
+        if (tool !== 'select' && tool !== 'pan') return;
+        const dx = e.touches[0].clientX - touchStartX;
+        const dy = e.touches[0].clientY - touchStartY;
+        if (!touchPanning && Math.sqrt(dx * dx + dy * dy) > 8) {
+          touchPanning = true;
+          this.container.classList.add('panning');
+        }
+        if (touchPanning) {
+          e.preventDefault();
+          this.panX += e.touches[0].clientX - touchStartX;
+          this.panY += e.touches[0].clientY - touchStartY;
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          this.updateTransform();
+          this.drawGrid();
+          Connections.render();
+          this.updateMinimap();
+        }
+      }
+    }, { passive: false });
+
+    this.container.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) {
+        lastTouchDist = 0;
+      }
+      if (e.touches.length === 0) {
+        if (touchPanning) {
+          touchPanning = false;
+          this.container.classList.remove('panning');
+        }
+      }
+    });
   },
 
   zoomAt(cx, cy, factor) {
