@@ -964,9 +964,13 @@ app.post('/api/boards/:owner/:name', requireAuth, (req, res) => {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Stable: read board by boardId
-app.get('/mcp/:owner/:boardId', mcpLimiter, (req, res, next) => {
+// Stable: read board by boardId (or serve MCP server-info for claude.ai discovery when no X-Board-Key)
+app.get('/mcp/:owner/:boardId', mcpLimiter, mcpCors, (req, res, next) => {
   if (!UUID_RE.test(req.params.boardId)) return next('route');
+  if (!req.headers['x-board-key']) {
+    // No API key header → return MCP server info so claude.ai can confirm endpoint is live
+    return res.json({ name: 'ssbd', version: '1.0.0', protocolVersion: '2024-11-05' });
+  }
   next();
 }, requireBoardKeyById, (req, res) => {
   if (!fs.existsSync(req.boardFilePath)) return res.json({ elements: [], connections: [] });
