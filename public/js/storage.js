@@ -291,6 +291,15 @@ const Storage = {
     const boardId = payload.boardId || null;
     body.innerHTML = '';
 
+    // MCP endpoint hint
+    if (boardId) {
+      const hint = document.createElement('div');
+      hint.className = 'key-reveal-hint';
+      hint.style.cssText = 'margin-bottom:12px;padding-bottom:10px;border-bottom:var(--border-light)';
+      hint.innerHTML = `MCP endpoint: <code style="user-select:all">${location.origin}/mcp/${encodeURIComponent(payload.owner || '')|| '…'}/${boardId}</code>`;
+      body.appendChild(hint);
+    }
+
     // Key list
     if (keys.length === 0) {
       body.innerHTML += '<div class="keys-empty">No keys yet</div>';

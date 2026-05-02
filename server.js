@@ -824,7 +824,7 @@ app.get('/api/boards/:name/keys', requireAuth, (req, res) => {
   const boardPath = path.join(getUserBoardDir(username), name + '.json');
   const boardId = fs.existsSync(boardPath) ? ensureBoardId(boardPath) : null;
   const keys = loadBoardKeys().filter(k => k.owner === username && k.board === name);
-  res.json({ boardId, keys: keys.map(({ keyHash, ...safe }) => safe) });
+  res.json({ boardId, owner: username, keys: keys.map(({ keyHash, ...safe }) => safe) });
 });
 
 // Generate key for a board
