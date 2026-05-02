@@ -1122,11 +1122,87 @@ app.put('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════
-//  REMOTE MCP HTTP ENDPOINT  (for claude.ai custom connector)
-//  URL: /mcp-remote/:key
-//  Protocol: MCP Streamable HTTP (JSON-RPC 2.0, POST only)
-//  Auth: API key embedded in URL path
+//  OAUTH 2.0 + REMOTE MCP HTTP ENDPOINT (claude.ai connector)
+//  Connect URL: /mcp-remote
+//  Auth: user enters board API key in OAuth form → Bearer token
 // ═══════════════════════════════════════════════════════
+
+// Temporary auth codes: code → { key, expires }
+const _mcpAuthCodes = new Map();
+
+// OAuth discovery
+app.get('/.well-known/oauth-authorization-server', (req, res) => {
+  const base = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  res.json({
+    issuer: base,
+    authorization_endpoint: `${base}/oauth/authorize`,
+    token_endpoint: `${base}/oauth/token`,
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code'],
+    code_challenge_methods_supported: ['S256', 'plain'],
+  });
+});
+
+// OAuth authorize — show key entry form
+app.get('/oauth/authorize', (req, res) => {
+  const { client_id, redirect_uri, state, code_challenge, code_challenge_method } = req.query;
+  const escaped = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SSBD — Connect Board</title>
+<style>
+  body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#111;color:#eee;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+  .box{background:#1a1a1a;border:1px solid #333;padding:40px;width:100%;max-width:400px}
+  h2{margin:0 0 8px;font-size:16px;font-weight:700;letter-spacing:2px}
+  p{margin:0 0 24px;font-size:12px;color:#888}
+  input{width:100%;background:#111;border:1px solid #444;color:#eee;font-family:monospace;font-size:11px;padding:10px 12px;box-sizing:border-box;outline:none;margin-bottom:16px}
+  input:focus{border-color:#fff}
+  button{width:100%;background:#fff;color:#111;border:none;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:2px;padding:12px;cursor:pointer}
+  button:hover{background:#FF4500;color:#fff}
+  .err{color:#FF4500;font-size:11px;margin-top:12px}
+</style></head>
+<body><div class="box">
+  <h2>● SAMESAMEBUTDIFFERENT</h2>
+  <p>Enter your board API key to connect Claude.</p>
+  <form method="POST" action="/oauth/authorize">
+    <input type="hidden" name="redirect_uri" value="${escaped(redirect_uri)}">
+    <input type="hidden" name="state" value="${escaped(state)}">
+    <input type="hidden" name="code_challenge" value="${escaped(code_challenge)}">
+    <input type="hidden" name="code_challenge_method" value="${escaped(code_challenge_method)}">
+    <input type="password" name="key" placeholder="ssbd_..." autocomplete="off" required>
+    <button type="submit">CONNECT →</button>
+  </form>
+</div></body></html>`);
+});
+
+app.post('/oauth/authorize', express.urlencoded({ extended: false }), (req, res) => {
+  const { key, redirect_uri, state } = req.body;
+  if (!key || !key.startsWith('ssbd_')) return res.status(400).send('Invalid key format');
+  const hash = hashKey(key);
+  const keys = loadBoardKeys();
+  if (!keys.find(k => k.keyHash === hash)) return res.status(401).send('Key not found');
+  // Generate short-lived code
+  const code = crypto.randomBytes(24).toString('hex');
+  _mcpAuthCodes.set(code, { key, expires: Date.now() + 5 * 60 * 1000 });
+  const url = new URL(redirect_uri);
+  url.searchParams.set('code', code);
+  if (state) url.searchParams.set('state', state);
+  res.redirect(url.toString());
+});
+
+// OAuth token exchange
+app.post('/oauth/token', express.json(), express.urlencoded({ extended: false }), (req, res) => {
+  const { grant_type, code } = req.body;
+  if (grant_type !== 'authorization_code') return res.status(400).json({ error: 'unsupported_grant_type' });
+  const entry = _mcpAuthCodes.get(code);
+  if (!entry || entry.expires < Date.now()) { _mcpAuthCodes.delete(code); return res.status(400).json({ error: 'invalid_grant' }); }
+  _mcpAuthCodes.delete(code);
+  res.json({ access_token: entry.key, token_type: 'bearer', expires_in: 0 });
+});
+
+// Cleanup expired codes periodically
+setInterval(() => { const now = Date.now(); _mcpAuthCodes.forEach((v, k) => { if (v.expires < now) _mcpAuthCodes.delete(k); }); }, 60 * 1000);
 
 const REMOTE_MCP_TOOLS = [
   { name: 'read_board',      description: 'Read the full board — returns all elements and connections.', inputSchema: { type: 'object', properties: {} } },
@@ -1199,9 +1275,12 @@ async function remoteMcpCallTool(name, args, boardFilePath, owner, boardName) {
   }
 }
 
-app.post('/mcp-remote/:key', mcpLimiter, async (req, res) => {
-  // Resolve key → board
-  const hash = hashKey(req.params.key);
+app.post('/mcp-remote', mcpLimiter, async (req, res) => {
+  // Accept Bearer token (OAuth flow) or key-in-URL (?key=) for backwards compat
+  const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  const rawKey = bearer || req.query.key || '';
+  if (!rawKey) return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'Missing auth' } });
+  const hash = hashKey(rawKey);
   const keys = loadBoardKeys();
   const entry = keys.find(k => k.keyHash === hash);
   if (!entry) return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'Invalid key' } });
