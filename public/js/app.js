@@ -113,7 +113,7 @@ const App = {
 
 
   initMobileMode() {
-    const isMobile = ('ontouchstart' in window) || window.innerWidth <= 900;
+    const isMobile = window.innerWidth <= 768;
     const stored = localStorage.getItem('wms-mobilemode');
     const active = stored === 'true' || (stored === null && isMobile);
     if (active) {
