@@ -20,6 +20,7 @@
 
   --font-sans: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   --font-mono: 'Roboto Mono', 'Courier New', Courier, monospace;
+  --font-display: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 
   --topbar-h: 40px;
   --border: 0.5px solid var(--black);
@@ -88,7 +89,7 @@ html, body {
 }
 
 .brand-name {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 2px;
@@ -1394,9 +1395,9 @@ body.dark .util-toast {
 }
 
 .panel-title {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 9px;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: 2px;
   color: var(--black);
 }
@@ -1971,9 +1972,9 @@ body.dark .key-label-input { background: #1A1A1A; border-color: #333; color: #E0
   gap: 10px;
   padding: 10px 16px;
   border-bottom: var(--border);
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: 2px;
   color: var(--black);
 }
