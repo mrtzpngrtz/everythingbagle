@@ -4110,9 +4110,10 @@ body.mobile-mode #canvas-container {
   left: 0;
   right: 0;
   height: 56px;
-  background: var(--white);
-  border-top: var(--border);
-  z-index: 9500;
+  background: #FFFFFF;
+  border-top: 1px solid #CCCCCC;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.12);
+  z-index: 99999;
   align-items: center;
   justify-content: space-around;
   padding-bottom: env(safe-area-inset-bottom, 0);
@@ -4147,7 +4148,7 @@ body.mobile-mode #mobile-bar {
   gap: 3px;
   background: none;
   border: none;
-  color: var(--dark-grey);
+  color: #888888;
   font-family: var(--font-mono);
   font-size: 7px;
   letter-spacing: 1px;
@@ -4164,7 +4165,7 @@ body.mobile-mode #mobile-bar {
 }
 
 .mb-btn.active {
-  color: var(--black);
+  color: #111111;
 }
 
 .mb-btn.mb-add-btn {
@@ -4286,16 +4287,17 @@ body.dark .mb-btn.mb-add-btn {
 
 /* Dark mode */
 body.dark #mobile-bar {
-  background: #1A1A1A;
-  border-top-color: #333;
+  background: #2A2A2A;
+  border-top-color: #444444;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.6);
 }
 
 body.dark .mb-btn {
-  color: #555;
+  color: #999999;
 }
 
 body.dark .mb-btn.active {
-  color: #E8E8E8;
+  color: #FFFFFF;
 }
 
 body.dark .sheet-content {
