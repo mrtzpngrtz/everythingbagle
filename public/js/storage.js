@@ -286,7 +286,9 @@ const Storage = {
     const body = document.getElementById('board-keys-body');
     body.innerHTML = '<div style="padding:12px;font-family:var(--font-mono);font-size:10px;color:var(--dark-grey)">Loading…</div>';
     const res = await fetch(`/api/boards/${encodeURIComponent(boardName)}/keys`);
-    const keys = await res.json();
+    const payload = await res.json();
+    const keys = payload.keys || payload; // backwards compat
+    const boardId = payload.boardId || null;
     body.innerHTML = '';
 
     // Key list
@@ -338,7 +340,7 @@ const Storage = {
       reveal.innerHTML = `
         <div class="key-reveal-label">COPY NOW — shown once</div>
         <div class="key-reveal-value" id="key-reveal-value">${data.key}</div>
-        <div class="key-reveal-hint">Base URL for MCP: <code>${location.origin}</code></div>
+        <div class="key-reveal-hint">MCP endpoint: <code>${location.origin}/mcp/${data.owner || ''}/${boardId || ''}</code></div>
         <button class="btn-primary key-copy-btn">COPY KEY</button>
         <button class="key-done-btn topbar-btn" style="margin-left:8px">DONE</button>
       `;

@@ -86,6 +86,37 @@ function saveBoardKeys(keys) {
 function hashKey(raw) {
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
+
+// Ensure board has a stable boardId in meta; generate one if missing
+function ensureBoardId(filePath) {
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (data.meta && data.meta.boardId) return data.meta.boardId;
+    const boardId = crypto.randomUUID();
+    if (!data.meta) data.meta = {};
+    data.meta.boardId = boardId;
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    return boardId;
+  } catch { return null; }
+}
+
+// Migrate old keys (board name only) to include boardId
+function migrateBoardKeys() {
+  const keys = loadBoardKeys();
+  let changed = false;
+  for (const key of keys) {
+    if (!key.boardId && key.board && key.owner) {
+      const fp = path.join(__dirname, 'data', 'boards', key.owner, key.board + '.json');
+      if (fs.existsSync(fp)) {
+        const bid = ensureBoardId(fp);
+        if (bid) { key.boardId = bid; changed = true; }
+      }
+    }
+  }
+  if (changed) saveBoardKeys(keys);
+}
+
+// Auth middleware for name-based MCP routes (legacy)
 function requireBoardKey(req, res, next) {
   const raw = req.headers['x-board-key'];
   if (!raw) return res.status(401).json({ error: 'Missing X-Board-Key header' });
@@ -99,6 +130,38 @@ function requireBoardKey(req, res, next) {
     return res.status(403).json({ error: 'Key not valid for this board' });
   }
   req.boardKeyEntry = entry;
+  entry.lastUsed = new Date().toISOString();
+  saveBoardKeys(keys);
+  next();
+}
+
+// Auth middleware for boardId-based MCP routes (stable across renames)
+function requireBoardKeyById(req, res, next) {
+  const raw = req.headers['x-board-key'];
+  if (!raw) return res.status(401).json({ error: 'Missing X-Board-Key header' });
+  const hash = hashKey(raw);
+  const keys = loadBoardKeys();
+  const entry = keys.find(k => k.keyHash === hash);
+  if (!entry) return res.status(401).json({ error: 'Invalid key' });
+  const boardIdParam = req.params.boardId;
+  const ownerParam = req.params.owner;
+  if (entry.boardId !== boardIdParam || entry.owner !== ownerParam) {
+    return res.status(403).json({ error: 'Key not valid for this board' });
+  }
+  // Resolve current filename by scanning for matching boardId
+  const boardDir = path.join(__dirname, 'data', 'boards', entry.owner);
+  if (!fs.existsSync(boardDir)) return res.status(404).json({ error: 'Board not found' });
+  let boardFile = null;
+  for (const f of fs.readdirSync(boardDir).filter(f => f.endsWith('.json'))) {
+    try {
+      const d = JSON.parse(fs.readFileSync(path.join(boardDir, f), 'utf8'));
+      if (d.meta && d.meta.boardId === boardIdParam) { boardFile = f; break; }
+    } catch {}
+  }
+  if (!boardFile) return res.status(404).json({ error: 'Board not found' });
+  req.boardKeyEntry = entry;
+  req.boardFilePath = path.join(boardDir, boardFile);
+  req.boardName = boardFile.replace('.json', '');
   entry.lastUsed = new Date().toISOString();
   saveBoardKeys(keys);
   next();
@@ -563,6 +626,7 @@ app.post('/api/boards/:name', requireAuth, (req, res) => {
   let collaborators = [];
   let shareToken = undefined;
   let sharePasswordHash = undefined;
+  let boardId = crypto.randomUUID();
   if (fs.existsSync(filePath)) {
     try {
       const prev = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -570,10 +634,12 @@ app.post('/api/boards/:name', requireAuth, (req, res) => {
       if (prev.meta && prev.meta.collaborators) collaborators = prev.meta.collaborators;
       if (prev.meta && prev.meta.shareToken) shareToken = prev.meta.shareToken;
       if (prev.meta && prev.meta.sharePasswordHash) sharePasswordHash = prev.meta.sharePasswordHash;
+      if (prev.meta && prev.meta.boardId) boardId = prev.meta.boardId;
     } catch (e) {}
   }
 
   const meta = {
+    boardId,
     created,
     lastEdit: new Date().toISOString(),
     elementCount: (req.body.elements || []).length,
@@ -644,6 +710,7 @@ app.get('/api/boards', requireAuth, (req, res) => {
       const data = JSON.parse(fs.readFileSync(path.join(boardDir, f), 'utf8'));
       return {
         name,
+        boardId: data.meta?.boardId || null,
         owner: username,
         shared: false,
         created: data.meta?.created || null,
@@ -651,7 +718,7 @@ app.get('/api/boards', requireAuth, (req, res) => {
         elementCount: data.meta?.elementCount || (data.elements || []).length,
       };
     } catch (e) {
-      return { name, owner: username, shared: false, created: null, lastEdit: null, elementCount: 0 };
+      return { name, boardId: null, owner: username, shared: false, created: null, lastEdit: null, elementCount: 0 };
     }
   });
 
@@ -667,6 +734,7 @@ app.get('/api/boards', requireAuth, (req, res) => {
           if (collabs.includes(username)) {
             boards.push({
               name: f.replace('.json', ''),
+              boardId: data.meta?.boardId || null,
               owner,
               shared: true,
               created: data.meta?.created || null,
@@ -753,8 +821,10 @@ app.delete('/api/boards/:name/share', requireAuth, (req, res) => {
 app.get('/api/boards/:name/keys', requireAuth, (req, res) => {
   const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
   const username = req.session.user.username;
+  const boardPath = path.join(getUserBoardDir(username), name + '.json');
+  const boardId = fs.existsSync(boardPath) ? ensureBoardId(boardPath) : null;
   const keys = loadBoardKeys().filter(k => k.owner === username && k.board === name);
-  res.json(keys.map(({ keyHash, ...safe }) => safe));
+  res.json({ boardId, keys: keys.map(({ keyHash, ...safe }) => safe) });
 });
 
 // Generate key for a board
@@ -764,12 +834,14 @@ app.post('/api/boards/:name/keys', requireAuth, (req, res) => {
   const boardPath = path.join(getUserBoardDir(username), name + '.json');
   if (!fs.existsSync(boardPath)) return res.status(404).json({ error: 'Board not found' });
   const { label = 'API Key', readOnly = false } = req.body;
+  const boardId = ensureBoardId(boardPath);
   const raw = 'ssbd_' + crypto.randomBytes(32).toString('hex');
   const entry = {
     id: 'key_' + crypto.randomBytes(6).toString('hex'),
     keyHash: hashKey(raw),
     owner: username,
     board: name,
+    boardId,
     label: String(label).slice(0, 64),
     readOnly: Boolean(readOnly),
     createdAt: new Date().toISOString(),
@@ -886,10 +958,87 @@ app.post('/api/boards/:owner/:name', requireAuth, (req, res) => {
 
 // ═══════════════════════════════════════════════════════
 //  MCP BOARD API  (authenticated via X-Board-Key header)
-//  Routes: /mcp/:owner/:board/...
+//  Stable routes: /mcp/:owner/:boardId/... (UUID, survives renames)
+//  Legacy routes: /mcp/:owner/:board/...   (board name, backwards compat)
 // ═══════════════════════════════════════════════════════
 
-// Read full board
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Stable: read board by boardId
+app.get('/mcp/:owner/:boardId', mcpLimiter, (req, res, next) => {
+  if (!UUID_RE.test(req.params.boardId)) return next('route');
+  next();
+}, requireBoardKeyById, (req, res) => {
+  if (!fs.existsSync(req.boardFilePath)) return res.json({ elements: [], connections: [] });
+  const data = JSON.parse(fs.readFileSync(req.boardFilePath, 'utf8'));
+  const { meta, ...safe } = data;
+  res.json({ ...safe, boardName: req.boardName, owner: req.params.owner });
+});
+
+// Stable: upload image by boardId
+app.post('/mcp/:owner/:boardId/upload', mcpLimiter, (req, res, next) => {
+  if (!UUID_RE.test(req.params.boardId)) return next('route');
+  next();
+}, requireBoardKeyById, async (req, res) => {
+  if (req.boardKeyEntry.readOnly) return res.status(403).json({ error: 'Key is read-only' });
+  const { base64, mimeType, filename, url, path: localPath } = req.body;
+  const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif']);
+  const MAX = 20 * 1024 * 1024;
+  const EXT_MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif' };
+  try {
+    let buf, mime, ext;
+    if (url) {
+      const fetch = (await import('node-fetch')).default;
+      const r = await fetch(url, { redirect: 'follow', size: MAX });
+      mime = (r.headers.get('content-type') || '').split(';')[0].trim();
+      if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed: ' + mime });
+      buf = Buffer.from(await r.arrayBuffer());
+    } else if (localPath) {
+      const uploadBase = path.resolve(process.env.SSBD_UPLOAD_BASE || '/mnt/user-data/uploads');
+      const resolved = path.resolve(uploadBase, localPath);
+      if (!resolved.startsWith(uploadBase + path.sep) && resolved !== uploadBase) return res.status(400).json({ error: 'Path traversal not allowed' });
+      if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'File not found: ' + localPath });
+      buf = fs.readFileSync(resolved);
+      if (buf.length > MAX) return res.status(413).json({ error: 'Image too large (max 20 MB)' });
+      mime = EXT_MIME[path.extname(localPath).toLowerCase()] || 'image/jpeg';
+      if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed' });
+    } else if (base64) {
+      mime = mimeType || 'image/jpeg';
+      if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed' });
+      buf = Buffer.from(base64, 'base64');
+      if (buf.length > MAX) return res.status(413).json({ error: 'Image too large (max 20 MB)' });
+    } else {
+      return res.status(400).json({ error: 'Provide path, base64, or url' });
+    }
+    ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp', 'image/avif': '.avif' }[mime] || '.jpg';
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9) + ext;
+    fs.writeFileSync(path.join(__dirname, 'uploads', unique), buf);
+    res.json({ src: '/uploads/' + unique, filename: unique, size: buf.length, mimeType: mime });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Stable: write board by boardId
+app.put('/mcp/:owner/:boardId', mcpLimiter, (req, res, next) => {
+  if (!UUID_RE.test(req.params.boardId)) return next('route');
+  next();
+}, requireBoardKeyById, (req, res) => {
+  if (req.boardKeyEntry.readOnly) return res.status(403).json({ error: 'Key is read-only' });
+  let meta = { created: new Date().toISOString(), owner: req.params.owner };
+  if (fs.existsSync(req.boardFilePath)) {
+    try { const prev = JSON.parse(fs.readFileSync(req.boardFilePath, 'utf8')); if (prev.meta) meta = prev.meta; } catch {}
+  }
+  meta.lastEdit = new Date().toISOString();
+  meta.elementCount = (req.body.elements || []).length;
+  const board = { ...req.body, meta };
+  fs.writeFileSync(req.boardFilePath, JSON.stringify(board, null, 2));
+  const room = `${req.params.owner}/${req.boardName}`;
+  broadcastToRoom(room, null, { type: 'state', elements: board.elements || [], connections: board.connections || [] });
+  res.json({ success: true });
+});
+
+// Legacy: read full board by name
 app.get('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
   req.params.name = req.params.board; req.params.owner = req.params.owner; next();
 }, requireBoardKey, (req, res) => {
@@ -1943,6 +2092,7 @@ wss.on('connection', (ws) => {
 // ═══════════════════════════════════════════════════════
 //  START
 // ═══════════════════════════════════════════════════════
+migrateBoardKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`SAMESAMEBUTDIFFERENT running on port ${PORT}`);
   console.log('Default login: admin / admin');
