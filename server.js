@@ -1122,6 +1122,125 @@ app.put('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════
+//  REMOTE MCP HTTP ENDPOINT  (for claude.ai custom connector)
+//  URL: /mcp-remote/:key
+//  Protocol: MCP Streamable HTTP (JSON-RPC 2.0, POST only)
+//  Auth: API key embedded in URL path
+// ═══════════════════════════════════════════════════════
+
+const REMOTE_MCP_TOOLS = [
+  { name: 'read_board',      description: 'Read the full board — returns all elements and connections.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'list_elements',   description: 'List elements, optionally filtered by type (text,note,image,rect,circle,arrow,todo,llmchat,heading,file,pin,draw,icon,calendar).', inputSchema: { type: 'object', properties: { type: { type: 'string' } } } },
+  { name: 'search_elements', description: 'Search elements whose text content contains the query string.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+  { name: 'add_element',     description: 'Add a new element. For images call upload_image first.', inputSchema: { type: 'object', properties: { type: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, content: { type: 'string' }, src: { type: 'string' }, color: { type: 'string' } }, required: ['type', 'x', 'y'] } },
+  { name: 'update_element',  description: 'Merge updates into an existing element by id.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, updates: { type: 'object' } }, required: ['id', 'updates'] } },
+  { name: 'delete_element',  description: 'Delete an element by id.', inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
+  { name: 'push_todo_items', description: 'Append items to an existing todo list without replacing existing ones.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, items: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, done: { type: 'boolean' }, important: { type: 'boolean' } }, required: ['text'] } } }, required: ['id', 'items'] } },
+  { name: 'set_todo_item_done', description: 'Mark a todo item done/undone by zero-based index.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, index: { type: 'number' }, done: { type: 'boolean' } }, required: ['id', 'index', 'done'] } },
+];
+
+async function remoteMcpCallTool(name, args, boardFilePath, owner, boardName) {
+  const readBoard = () => {
+    if (!fs.existsSync(boardFilePath)) return { elements: [], connections: [] };
+    const d = JSON.parse(fs.readFileSync(boardFilePath, 'utf8'));
+    const { meta, ...safe } = d; return { ...safe, boardName, owner };
+  };
+  const writeBoard = (data) => {
+    let meta = { created: new Date().toISOString(), owner };
+    if (fs.existsSync(boardFilePath)) { try { const p = JSON.parse(fs.readFileSync(boardFilePath, 'utf8')); if (p.meta) meta = p.meta; } catch {} }
+    meta.lastEdit = new Date().toISOString();
+    meta.elementCount = (data.elements || []).length;
+    const board = { ...data, meta };
+    fs.writeFileSync(boardFilePath, JSON.stringify(board, null, 2));
+    broadcastToRoom(`${owner}/${boardName}`, null, { type: 'state', elements: board.elements || [], connections: board.connections || [] });
+  };
+  const text = (t) => ({ content: [{ type: 'text', text: typeof t === 'string' ? t : JSON.stringify(t, null, 2) }] });
+
+  switch (name) {
+    case 'read_board':      return text(readBoard());
+    case 'list_elements': { const b = readBoard(); let els = b.elements || []; if (args.type) els = els.filter(e => e.type === args.type); return text(els); }
+    case 'search_elements': { const b = readBoard(); const q = (args.query || '').toLowerCase(); return text((b.elements || []).filter(e => [e.content, e.text, e.title].filter(Boolean).join(' ').toLowerCase().includes(q))); }
+    case 'add_element': {
+      const b = readBoard();
+      const el = { id: 'el_mcp_' + Math.random().toString(36).slice(2, 10), type: args.type, x: args.x ?? 100, y: args.y ?? 100, width: args.width ?? (args.type === 'image' ? 300 : 200), height: args.height ?? (args.type === 'image' ? 200 : 120), content: args.content ?? '', zIndex: ((b.elements || []).length + 1), ...(args.src ? { src: args.src } : {}), ...(args.color ? { color: args.color } : {}) };
+      writeBoard({ ...b, elements: [...(b.elements || []), el] });
+      return text(el);
+    }
+    case 'update_element': {
+      const b = readBoard(); const idx = (b.elements || []).findIndex(e => e.id === args.id);
+      if (idx < 0) throw new Error(`Element ${args.id} not found`);
+      const elements = [...b.elements]; elements[idx] = { ...elements[idx], ...args.updates, id: args.id };
+      writeBoard({ ...b, elements }); return text(elements[idx]);
+    }
+    case 'delete_element': {
+      const b = readBoard(); const before = (b.elements || []).length;
+      const elements = (b.elements || []).filter(e => e.id !== args.id);
+      if (elements.length === before) throw new Error(`Element ${args.id} not found`);
+      writeBoard({ ...b, elements }); return text(`Deleted ${args.id}`);
+    }
+    case 'push_todo_items': {
+      const b = readBoard(); const idx = (b.elements || []).findIndex(e => e.id === args.id);
+      if (idx < 0) throw new Error(`Element ${args.id} not found`);
+      if (b.elements[idx].type !== 'todo') throw new Error(`Element ${args.id} is not a todo list`);
+      const newItems = (args.items || []).map(i => ({ text: i.text, done: i.done ?? false, important: i.important ?? false, assignee: '' }));
+      const elements = [...b.elements]; elements[idx] = { ...elements[idx], items: [...(elements[idx].items || []), ...newItems] };
+      writeBoard({ ...b, elements }); return text(`Added ${newItems.length} item(s)`);
+    }
+    case 'set_todo_item_done': {
+      const b = readBoard(); const idx = (b.elements || []).findIndex(e => e.id === args.id);
+      if (idx < 0) throw new Error(`Element ${args.id} not found`);
+      const items = [...(b.elements[idx].items || [])];
+      if (args.index < 0 || args.index >= items.length) throw new Error(`Index ${args.index} out of range`);
+      items[args.index] = { ...items[args.index], done: args.done };
+      const elements = [...b.elements]; elements[idx] = { ...elements[idx], items };
+      writeBoard({ ...b, elements }); return text(`Item ${args.index} marked ${args.done ? 'done' : 'undone'}`);
+    }
+    default: throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
+app.post('/mcp-remote/:key', mcpLimiter, async (req, res) => {
+  // Resolve key → board
+  const hash = hashKey(req.params.key);
+  const keys = loadBoardKeys();
+  const entry = keys.find(k => k.keyHash === hash);
+  if (!entry) return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'Invalid key' } });
+
+  const boardDir = path.join(__dirname, 'data', 'boards', entry.owner);
+  let boardFilePath = null, boardName = null;
+  if (entry.boardId && fs.existsSync(boardDir)) {
+    for (const f of fs.readdirSync(boardDir).filter(f => f.endsWith('.json'))) {
+      try { const d = JSON.parse(fs.readFileSync(path.join(boardDir, f), 'utf8')); if (d.meta?.boardId === entry.boardId) { boardFilePath = path.join(boardDir, f); boardName = f.replace('.json', ''); break; } } catch {}
+    }
+  } else if (entry.board) {
+    boardFilePath = path.join(boardDir, entry.board + '.json');
+    boardName = entry.board;
+  }
+  if (!boardFilePath) return res.status(404).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32002, message: 'Board not found' } });
+
+  entry.lastUsed = new Date().toISOString(); saveBoardKeys(keys);
+
+  const { method, params, id } = req.body || {};
+  const ok  = (result) => res.json({ jsonrpc: '2.0', id: id ?? null, result });
+  const err = (code, message) => res.json({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
+
+  try {
+    if (method === 'initialize') return ok({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'ssbd', version: '1.0.0' } });
+    if (method === 'notifications/initialized') return res.status(202).end();
+    if (method === 'ping') return ok({});
+    if (method === 'tools/list') return ok({ tools: REMOTE_MCP_TOOLS });
+    if (method === 'tools/call') {
+      if (entry.readOnly && ['add_element','update_element','delete_element','push_todo_items','set_todo_item_done'].includes(params?.name)) return err(-32003, 'Key is read-only');
+      const result = await remoteMcpCallTool(params.name, params.arguments || {}, boardFilePath, entry.owner, boardName);
+      return ok({ content: result.content, isError: false });
+    }
+    return err(-32601, `Method not found: ${method}`);
+  } catch (e) {
+    return err(-32603, e.message);
+  }
+});
+
+// ═══════════════════════════════════════════════════════
 //  SUGGESTIONS API (shared, authenticated)
 // ═══════════════════════════════════════════════════════
 const suggestionsFile = path.join(__dirname, 'data', '_suggestions.json');
