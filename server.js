@@ -1275,6 +1275,10 @@ async function remoteMcpCallTool(name, args, boardFilePath, owner, boardName) {
   }
 }
 
+app.get('/mcp-remote', (req, res) => {
+  res.status(200).json({ name: 'ssbd', version: '1.0.0', protocol: 'MCP/2024-11-05' });
+});
+
 app.post('/mcp-remote', mcpLimiter, async (req, res) => {
   // Accept Bearer token (OAuth flow) or key-in-URL (?key=) for backwards compat
   const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
