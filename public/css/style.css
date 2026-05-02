@@ -4109,19 +4109,16 @@ body.mobile-mode #canvas-container {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  height: 60px;
   background: #FFFFFF;
-  border-top: 1px solid #CCCCCC;
-  box-shadow: 0 -2px 12px rgba(0,0,0,0.12);
+  border-top: 2px solid #AAAAAA;
   z-index: 99999;
-  align-items: center;
-  justify-content: space-around;
-  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 body.mobile-mode #mobile-bar {
   display: flex !important;
-  z-index: 99999;
+  align-items: center !important;
+  justify-content: space-around !important;
 }
 
 @media (max-width: 768px) {
@@ -4132,25 +4129,27 @@ body.mobile-mode #mobile-bar {
   #canvas-container {
     top: 0 !important;
     left: 0 !important;
-    bottom: 56px !important;
+    bottom: 60px !important;
   }
   #mobile-bar {
     display: flex !important;
-    z-index: 99999;
+    align-items: center !important;
+    justify-content: space-around !important;
   }
 }
 
 .mb-btn {
   flex: 1;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: none;
   border: none;
-  color: #555555;
+  color: #333333;
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 1px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
