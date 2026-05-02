@@ -1130,8 +1130,21 @@ app.put('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
 // Temporary auth codes: code → { key, expires }
 const _mcpAuthCodes = new Map();
 
+// CORS middleware for MCP + OAuth endpoints (claude.ai is cross-origin)
+function mcpCors(req, res, next) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Mcp-Session-Id');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+}
+app.options('/mcp-remote', mcpCors);
+app.options('/.well-known/oauth-authorization-server', mcpCors);
+app.options('/oauth/authorize', mcpCors);
+app.options('/oauth/token', mcpCors);
+
 // OAuth discovery
-app.get('/.well-known/oauth-authorization-server', (req, res) => {
+app.get('/.well-known/oauth-authorization-server', mcpCors, (req, res) => {
   const base = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
   res.json({
     issuer: base,
@@ -1144,7 +1157,7 @@ app.get('/.well-known/oauth-authorization-server', (req, res) => {
 });
 
 // OAuth authorize — show key entry form
-app.get('/oauth/authorize', (req, res) => {
+app.get('/oauth/authorize', mcpCors, (req, res) => {
   const { client_id, redirect_uri, state, code_challenge, code_challenge_method } = req.query;
   const escaped = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   res.send(`<!DOCTYPE html>
@@ -1176,7 +1189,7 @@ app.get('/oauth/authorize', (req, res) => {
 </div></body></html>`);
 });
 
-app.post('/oauth/authorize', express.urlencoded({ extended: false }), (req, res) => {
+app.post('/oauth/authorize', mcpCors, express.urlencoded({ extended: false }), (req, res) => {
   const { key, redirect_uri, state } = req.body;
   if (!key || !key.startsWith('ssbd_')) return res.status(400).send('Invalid key format');
   const hash = hashKey(key);
@@ -1192,7 +1205,7 @@ app.post('/oauth/authorize', express.urlencoded({ extended: false }), (req, res)
 });
 
 // OAuth token exchange
-app.post('/oauth/token', express.json(), express.urlencoded({ extended: false }), (req, res) => {
+app.post('/oauth/token', mcpCors, express.json(), express.urlencoded({ extended: false }), (req, res) => {
   const { grant_type, code } = req.body;
   if (grant_type !== 'authorization_code') return res.status(400).json({ error: 'unsupported_grant_type' });
   const entry = _mcpAuthCodes.get(code);
@@ -1275,11 +1288,11 @@ async function remoteMcpCallTool(name, args, boardFilePath, owner, boardName) {
   }
 }
 
-app.get('/mcp-remote', (req, res) => {
+app.get('/mcp-remote', mcpCors, (req, res) => {
   res.status(200).json({ name: 'ssbd', version: '1.0.0', protocol: 'MCP/2024-11-05' });
 });
 
-app.post('/mcp-remote', mcpLimiter, async (req, res) => {
+app.post('/mcp-remote', mcpCors, mcpLimiter, async (req, res) => {
   // Accept Bearer token (OAuth flow) or key-in-URL (?key=) for backwards compat
   const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
   const rawKey = bearer || req.query.key || '';
