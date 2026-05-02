@@ -291,7 +291,10 @@ function requireAdmin(req, res, next) {
 app.use('/css', express.static(path.join(__dirname, 'public/css')));
 app.use('/js', express.static(path.join(__dirname, 'public/js')));
 app.get('/favicon.svg', (req, res) => res.sendFile(path.join(__dirname, 'public', 'favicon.svg')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', (req, res, next) => {
+  if (!req.session?.user) return res.status(401).send('Unauthorized');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // ═══════════════════════════════════════════════════════
 //  PAGE ROUTES
