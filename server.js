@@ -1279,6 +1279,7 @@ function mcpCors(req, res, next) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Mcp-Session-Id');
+  res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 }
