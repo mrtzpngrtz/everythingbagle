@@ -94,6 +94,51 @@ const USERS_FILE = path.join(__dirname, 'data', '_users.json');
 const SETTINGS_FILE = path.join(__dirname, 'data', '_settings.json');
 const BOARD_KEYS_FILE = path.join(__dirname, 'data', '_board_keys.json');
 
+// ── Field-level encryption for sensitive user data (AES-256-GCM) ──────────
+let _encKey = null;
+function _getEncKey() {
+  if (!_encKey) _encKey = crypto.createHash('sha256').update(process.env.SESSION_SECRET).digest();
+  return _encKey;
+}
+const _ENC_PREFIX = 'enc:v1:';
+function encryptField(text) {
+  if (!text) return text;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', _getEncKey(), iv);
+  const ct = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return _ENC_PREFIX + iv.toString('hex') + ':' + tag.toString('hex') + ':' + ct.toString('hex');
+}
+function decryptField(text) {
+  if (!text || !text.startsWith(_ENC_PREFIX)) return text;
+  try {
+    const [ivHex, tagHex, ctHex] = text.slice(_ENC_PREFIX.length).split(':');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', _getEncKey(), Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return decipher.update(Buffer.from(ctHex, 'hex')) + decipher.final('utf8');
+  } catch { return text; }
+}
+const _SENSITIVE_FIELDS = ['llmApiKey', 'googleClientSecret'];
+const _SENSITIVE_TOKEN_FIELDS = ['accessToken', 'refreshToken'];
+function _encryptUserSecrets(user) {
+  const u = { ...user };
+  for (const f of _SENSITIVE_FIELDS) if (u[f]) u[f] = encryptField(u[f]);
+  if (u.googleTokens) {
+    u.googleTokens = { ...u.googleTokens };
+    for (const f of _SENSITIVE_TOKEN_FIELDS) if (u.googleTokens[f]) u.googleTokens[f] = encryptField(u.googleTokens[f]);
+  }
+  return u;
+}
+function _decryptUserSecrets(user) {
+  const u = { ...user };
+  for (const f of _SENSITIVE_FIELDS) if (u[f]) u[f] = decryptField(u[f]);
+  if (u.googleTokens) {
+    u.googleTokens = { ...u.googleTokens };
+    for (const f of _SENSITIVE_TOKEN_FIELDS) if (u.googleTokens[f]) u.googleTokens[f] = decryptField(u.googleTokens[f]);
+  }
+  return u;
+}
+
 function loadBoardKeys() {
   if (!fs.existsSync(BOARD_KEYS_FILE)) return [];
   try { return JSON.parse(fs.readFileSync(BOARD_KEYS_FILE, 'utf8')); } catch { return []; }
@@ -196,11 +241,11 @@ function saveSettings(settings) {
 
 function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) return [];
-  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch { return []; }
+  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')).map(_decryptUserSecrets); } catch { return []; }
 }
 
 function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users.map(_encryptUserSecrets), null, 2));
 }
 
 function findUser(username) {
@@ -254,6 +299,11 @@ function migrateOldBoards() {
   });
 }
 
+if (!process.env.SESSION_SECRET) {
+  console.error('FATAL: SESSION_SECRET environment variable is not set. Set it before starting the server.');
+  process.exit(1);
+}
+
 ensureDefaultAdmin();
 migrateOldBoards();
 
@@ -262,11 +312,6 @@ migrateOldBoards();
 // ═══════════════════════════════════════════════════════
 app.use(express.json({ limit: '50mb' }));
 app.set('trust proxy', 1); // trust first proxy (Coolify/nginx)
-
-if (!process.env.SESSION_SECRET) {
-  console.error('FATAL: SESSION_SECRET environment variable is not set. Set it before starting the server.');
-  process.exit(1);
-}
 const sessionMiddleware = session({
   store: new FileStore({ path: './data/sessions', ttl: 7 * 24 * 60 * 60, retries: 0, logFn: () => {} }),
   secret: process.env.SESSION_SECRET,
