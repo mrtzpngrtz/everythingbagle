@@ -1,4 +1,4 @@
-/* === SAMESAMEBUTDIFFERENT — Admin CMS === */
+/* === EVERTHINGBAGLE — Admin CMS === */
 const Admin = {
   currentUser: null,
 
@@ -28,7 +28,7 @@ const Admin = {
 
     document.getElementById('btn-add-user').addEventListener('click', () => this.showCreateUserModal());
 
-    console.log('SAMESAMEBUTDIFFERENT Admin — Ready');
+    console.log('EVERTHINGBAGLE Admin — Ready');
   },
 
   // ═══ NAVIGATION ═══

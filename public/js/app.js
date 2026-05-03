@@ -1,4 +1,4 @@
-/* === SAMESAMEBUTDIFFERENT — Main App === */
+/* === EVERTHINGBAGLE — Main App === */
 const App = {
   elements: [],
   connections: [],
@@ -47,7 +47,7 @@ const App = {
     // Logout
     this.initLogout();
 
-    console.log('SAMESAMEBUTDIFFERENT v0.8.1 — Ready');
+    console.log('EVERTHINGBAGLE v0.8.1 — Ready');
     console.log('Keys: V=Select H=Pan T=Text N=Note R=Rect A=Arrow D=Todo P=Draw K=Pin Space=Pan');
   },
 

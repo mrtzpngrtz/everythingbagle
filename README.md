@@ -1,4 +1,4 @@
-# SAMESAMEBUTDIFFERENT
+# EVERTHINGBAGLE
 
 Infinite canvas that can do it all.
 
@@ -73,7 +73,7 @@ Infinite canvas that can do it all.
 
 ## UX & Design Philosophy
 
-The core of **SAMESAMEBUTDIFFERENT** is built around an uncompromising focus on flow, immediacy, and spatial freedom:
+The core of **EVERTHINGBAGLE** is built around an uncompromising focus on flow, immediacy, and spatial freedom:
 
 - **Unobtrusive Interface:** The UI gets out of the way. Tools and properties only appear contextually when needed, maximising the space for ideas on the infinite canvas.
 - **Immediate Feedback:** Every action feels instantaneous because we rely on fast Vanilla JS and native DOM/SVG manipulations instead of heavy frameworks.
@@ -107,12 +107,12 @@ Generate a secret: `node -e "console.log(require('crypto').randomBytes(32).toStr
 ### Docker / Self-hosted
 
 ```bash
-docker build -t wollmilchsau .
+docker build -t everthingbagle .
 docker run -p 3000:3000 \
   -e SESSION_SECRET=your-secret-here \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/uploads:/app/uploads \
-  wollmilchsau
+  everthingbagle
 ```
 
 Mount `data` and `uploads` as volumes to persist boards, users, and uploaded files across restarts.

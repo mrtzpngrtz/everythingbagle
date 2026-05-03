@@ -43,7 +43,7 @@ const Share = {
       const boardName = data.meta?.boardName || data.meta?.name || 'Shared Board';
       const titleEl = document.getElementById('share-board-title');
       if (titleEl) titleEl.textContent = boardName;
-      document.title = `SAMESAMEBUTDIFFERENT — ${boardName}`;
+      document.title = `EVERTHINGBAGLE — ${boardName}`;
 
       App.elements = data.elements || [];
       App.connections = data.connections || [];
@@ -117,7 +117,7 @@ const Share = {
       const boardName = data.meta?.boardName || data.meta?.name || 'Shared Board';
       const titleEl = document.getElementById('share-board-title');
       if (titleEl) titleEl.textContent = boardName;
-      document.title = `SAMESAMEBUTDIFFERENT — ${boardName}`;
+      document.title = `EVERTHINGBAGLE — ${boardName}`;
 
       App.elements = data.elements || [];
       App.connections = data.connections || [];

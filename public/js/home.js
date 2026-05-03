@@ -1,4 +1,4 @@
-/* === SAMESAMEBUTDIFFERENT — Home Page === */
+/* === EVERTHINGBAGLE — Home Page === */
 const Home = {
   async init() {
     await this.loadCurrentUser();

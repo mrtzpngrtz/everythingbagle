@@ -520,7 +520,7 @@ app.post('/api/auth/2fa/setup', requireAuth, async (req, res) => {
   // Store temporarily in session until confirmed
   req.session.pendingTwoFactorSetup = secret;
 
-  const otpauthUrl = totpGenerateURI({ issuer: 'SAMESAMEBUTDIFFERENT', label: user.username, secret });
+  const otpauthUrl = totpGenerateURI({ issuer: 'EVERTHINGBAGLE', label: user.username, secret });
   const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
 
   res.json({ secret, qrDataUrl });
@@ -1331,7 +1331,7 @@ app.get('/oauth/authorize', mcpCors, (req, res) => {
   .err{color:#FF4500;font-size:11px;margin-top:12px}
 </style></head>
 <body><div class="box">
-  <h2>â— SAMESAMEBUTDIFFERENT</h2>
+  <h2>â— EVERTHINGBAGLE</h2>
   <p>Enter your board API key to connect Claude.</p>
   <form method="POST" action="/oauth/authorize">
     <input type="hidden" name="redirect_uri" value="${escaped(redirect_uri)}">
@@ -2487,6 +2487,6 @@ wss.on('connection', (ws) => {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 migrateBoardKeys();
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`SAMESAMEBUTDIFFERENT running on port ${PORT}`);
+  console.log(`EVERTHINGBAGLE running on port ${PORT}`);
 });
 

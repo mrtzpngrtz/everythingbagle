@@ -1,7 +1,7 @@
 {
   "name": "ssbd-mcp",
   "version": "1.0.0",
-  "description": "MCP server for SAMESAMEBUTDIFFERENT boards",
+  "description": "MCP server for EVERTHINGBAGLE boards",
   "type": "module",
   "main": "mcp-server.js",
   "bin": { "ssbd-mcp": "./mcp-server.js" },

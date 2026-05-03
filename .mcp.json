@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "wollmilchsau": {
+    "everthingbagle": {
       "type": "http",
       "url": "https://wollmilchsau.aop.studio/mcp-remote",
       "headers": {
