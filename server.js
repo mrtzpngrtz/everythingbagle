@@ -17,6 +17,9 @@ const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standard
 const twoFaLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many 2FA attempts, try again later' } });
 const llmLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests, slow down' } });
 const mcpLimiter = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { error: 'MCP rate limit exceeded' } });
+const boardWriteLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many board saves, slow down' } });
+const exportLimiter = rateLimit({ windowMs: 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many export requests, slow down' } });
+const uploadLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many uploads, slow down' } });
 
 // â”€â”€ Minimal TOTP (RFC 6238) â€” no external dependency â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -682,7 +685,7 @@ const uploadFileFilter = (req, file, cb) => {
 };
 const upload = multer({ storage, fileFilter: uploadFileFilter, limits: { fileSize: 50 * 1024 * 1024 } });
 
-app.post('/api/upload', requireAuth, (req, res, next) => {
+app.post('/api/upload', requireAuth, uploadLimiter, (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) return res.status(err.status || 400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -705,7 +708,7 @@ function getUserBoardDir(username) {
 }
 
 // Save board
-app.post('/api/boards/:name', requireAuth, (req, res) => {
+app.post('/api/boards/:name', requireAuth, boardWriteLimiter, (req, res) => {
   const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
   const boardDir = getUserBoardDir(req.session.user.username);
   const filePath = path.join(boardDir, name + '.json');
@@ -1004,7 +1007,7 @@ app.get('/api/boards/:owner/:name', requireAuth, (req, res) => {
 });
 
 // Save shared board
-app.post('/api/boards/:owner/:name', requireAuth, (req, res) => {
+app.post('/api/boards/:owner/:name', requireAuth, boardWriteLimiter, (req, res) => {
   const owner = req.params.owner.replace(/[^a-zA-Z0-9_-]/g, '');
   const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
   const username = req.session.user.username;
@@ -1558,7 +1561,7 @@ app.delete('/api/suggestions/:index', requireAuth, (req, res) => {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  EXPORT API
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-app.post('/api/export', requireAuth, (req, res) => {
+app.post('/api/export', requireAuth, exportLimiter, (req, res) => {
   const { data } = req.body;
   if (!data) return res.status(400).json({ error: 'No data' });
   const base64 = data.replace(/^data:image\/png;base64,/, '');
