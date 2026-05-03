@@ -95,6 +95,21 @@ const SETTINGS_FILE = path.join(__dirname, 'data', '_settings.json');
 const BOARD_KEYS_FILE = path.join(__dirname, 'data', '_board_keys.json');
 
 // â”€â”€ Atomic file write (write-to-tmp then rename) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── SSRF-safe remote image fetch ──────────────────────────────────────────
+const _PRIVATE_IP_RE = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|fd[0-9a-f]{2}:|fc[0-9a-f]{2}:|172\.(1[6-9]|2\d|3[01])\.)/i;
+async function fetchRemoteImage(url, maxBytes) {
+  let parsed;
+  try { parsed = new URL(url); } catch { throw Object.assign(new Error('Invalid URL'), { status: 400 }); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw Object.assign(new Error('Only http/https allowed'), { status: 400 });
+  if (_PRIVATE_IP_RE.test(parsed.hostname)) throw Object.assign(new Error('URL resolves to a private/reserved address'), { status: 400 });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10_000);
+  try {
+    const fetch = (await import('node-fetch')).default;
+    return await fetch(url, { redirect: 'follow', signal: ctrl.signal, size: maxBytes });
+  } finally { clearTimeout(timer); }
+}
+
 function atomicWriteJSON(filePath, data) {
   const tmp = filePath + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
@@ -1065,8 +1080,7 @@ app.post('/mcp/:owner/:boardId/upload', mcpLimiter, (req, res, next) => {
   try {
     let buf, mime, ext;
     if (url) {
-      const fetch = (await import('node-fetch')).default;
-      const r = await fetch(url, { redirect: 'follow', size: MAX });
+      const r = await fetchRemoteImage(url, MAX);
       mime = (r.headers.get('content-type') || '').split(';')[0].trim();
       if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed: ' + mime });
       buf = Buffer.from(await r.arrayBuffer());
@@ -1193,9 +1207,7 @@ app.post('/mcp/:owner/:board/upload', mcpLimiter, (req, res, next) => {
     let buf, mime, ext;
 
     if (url) {
-      // Fetch remote image
-      const fetch = (await import('node-fetch')).default;
-      const r = await fetch(url, { redirect: 'follow', size: MAX });
+      const r = await fetchRemoteImage(url, MAX);
       mime = (r.headers.get('content-type') || '').split(';')[0].trim();
       if (!ALLOWED.has(mime)) return res.status(415).json({ error: 'Image type not allowed: ' + mime });
       buf = Buffer.from(await r.arrayBuffer());
