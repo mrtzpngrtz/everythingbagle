@@ -416,7 +416,7 @@ const Admin = {
           <span class="${bulletClass}">${bullet}</span>
           <div class="suggestion-content">
             <div class="suggestion-text">${this.esc(s.text)}</div>
-            <div class="suggestion-meta">${s.user ? s.user + ' · ' : ''}${this.timeAgo(s.time)}${doneInfo}</div>
+            <div class="suggestion-meta">${s.user ? this.esc(s.user) + ' · ' : ''}${this.timeAgo(s.time)}${doneInfo}</div>
           </div>
           <div class="suggestion-actions-admin">
             <button class="${toggleClass}" data-idx="${idx}" title="${toggleLabel}">${toggleLabel}</button>
