@@ -1284,10 +1284,20 @@ function mcpCors(req, res, next) {
 }
 app.options('/mcp-remote', mcpCors);
 app.options('/.well-known/oauth-authorization-server', mcpCors);
+app.options('/.well-known/oauth-protected-resource', mcpCors);
 app.options('/oauth/authorize', mcpCors);
 app.options('/oauth/token', mcpCors);
 
-// OAuth discovery
+// OAuth Protected Resource Metadata (RFC 9728) — tells clients where the auth server is
+app.get('/.well-known/oauth-protected-resource', mcpCors, (req, res) => {
+  const base = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  res.json({
+    resource: `${base}/mcp-remote`,
+    authorization_servers: [base],
+  });
+});
+
+// OAuth Authorization Server Metadata (RFC 8414)
 app.get('/.well-known/oauth-authorization-server', mcpCors, (req, res) => {
   const base = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
   res.json({
@@ -1444,7 +1454,7 @@ app.get('/mcp-remote', mcpCors, (req, res) => {
   const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
   if (!bearer) {
     const base = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    res.setHeader('WWW-Authenticate', `Bearer realm="ssbd", resource_metadata="${base}/.well-known/oauth-authorization-server"`);
+    res.setHeader('WWW-Authenticate', `Bearer realm="ssbd", resource_metadata="${base}/.well-known/oauth-protected-resource"`);
     return res.status(401).json({ error: 'unauthorized' });
   }
   res.status(200).json({ name: 'ssbd', version: '1.0.0', protocol: 'MCP/2024-11-05' });
@@ -1456,7 +1466,7 @@ app.post('/mcp-remote', mcpCors, mcpLimiter, async (req, res) => {
   const rawKey = bearer || req.query.key || '';
   if (!rawKey) {
     const base = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    res.setHeader('WWW-Authenticate', `Bearer realm="ssbd", resource_metadata="${base}/.well-known/oauth-authorization-server"`);
+    res.setHeader('WWW-Authenticate', `Bearer realm="ssbd", resource_metadata="${base}/.well-known/oauth-protected-resource"`);
     return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'Missing auth' } });
   }
   const hash = hashKey(rawKey);
