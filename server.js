@@ -10,6 +10,7 @@ const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const { rateLimit } = require('express-rate-limit');
 const FileStore = require('session-file-store')(session);
+const helmet = require('helmet');
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many login attempts, try again later' } });
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many registration attempts, try again later' } });
@@ -59,7 +60,24 @@ function totpGenerateURI({ issuer, label, secret }) {
 // ──────────────────────────────────────────────────────────────────────────
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:', '*'],
+      connectSrc: ["'self'", 'ws:', 'wss:', '*'],
+      fontSrc: ["'self'", 'data:'],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'", 'blob:'],
+      workerSrc: ["'self'", 'blob:'],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 
 // ═══════════════════════════════════════════════════════
 //  DIRECTORIES
@@ -2377,5 +2395,4 @@ wss.on('connection', (ws) => {
 migrateBoardKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`SAMESAMEBUTDIFFERENT running on port ${PORT}`);
-  console.log('Default login: admin / admin');
 });
