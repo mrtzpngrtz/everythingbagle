@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const multer = require('multer');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
@@ -18,7 +18,7 @@ const twoFaLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHea
 const llmLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests, slow down' } });
 const mcpLimiter = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { error: 'MCP rate limit exceeded' } });
 
-// ── Minimal TOTP (RFC 6238) — no external dependency ──────────────────────
+// â”€â”€ Minimal TOTP (RFC 6238) â€” no external dependency â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 function _b32decode(str) {
   str = str.toUpperCase().replace(/=+$/, '').replace(/\s/g, '');
@@ -57,7 +57,7 @@ function totpVerifySync({ token, secret }) {
 function totpGenerateURI({ issuer, label, secret }) {
   return `otpauth://totp/${encodeURIComponent(issuer + ':' + label)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 }
-// ──────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -66,11 +66,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://cdn.jsdelivr.net'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", 'data:', 'blob:', '*'],
       connectSrc: ["'self'", 'ws:', 'wss:', '*'],
-      fontSrc: ["'self'", 'data:'],
+      fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'", 'blob:'],
       workerSrc: ["'self'", 'blob:'],
@@ -79,22 +79,29 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  DIRECTORIES
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ['uploads', 'data', 'data/boards'].forEach(dir => {
   const p = path.join(__dirname, dir);
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  USER DATABASE (JSON file-based)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const USERS_FILE = path.join(__dirname, 'data', '_users.json');
 const SETTINGS_FILE = path.join(__dirname, 'data', '_settings.json');
 const BOARD_KEYS_FILE = path.join(__dirname, 'data', '_board_keys.json');
 
-// ── Field-level encryption for sensitive user data (AES-256-GCM) ──────────
+// â”€â”€ Atomic file write (write-to-tmp then rename) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function atomicWriteJSON(filePath, data) {
+  const tmp = filePath + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, filePath);
+}
+
+// â”€â”€ Field-level encryption for sensitive user data (AES-256-GCM) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let _encKey = null;
 function _getEncKey() {
   if (!_encKey) _encKey = crypto.createHash('sha256').update(process.env.SESSION_SECRET).digest();
@@ -144,7 +151,7 @@ function loadBoardKeys() {
   try { return JSON.parse(fs.readFileSync(BOARD_KEYS_FILE, 'utf8')); } catch { return []; }
 }
 function saveBoardKeys(keys) {
-  fs.writeFileSync(BOARD_KEYS_FILE, JSON.stringify(keys, null, 2));
+  atomicWriteJSON(BOARD_KEYS_FILE, keys);
 }
 function hashKey(raw) {
   return crypto.createHash('sha256').update(raw).digest('hex');
@@ -158,7 +165,7 @@ function ensureBoardId(filePath) {
     const boardId = crypto.randomUUID();
     if (!data.meta) data.meta = {};
     data.meta.boardId = boardId;
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    atomicWriteJSON(filePath, data);
     return boardId;
   } catch { return null; }
 }
@@ -236,7 +243,7 @@ function loadSettings() {
 }
 
 function saveSettings(settings) {
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  atomicWriteJSON(SETTINGS_FILE, settings);
 }
 
 function loadUsers() {
@@ -245,7 +252,7 @@ function loadUsers() {
 }
 
 function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users.map(_encryptUserSecrets), null, 2));
+  atomicWriteJSON(USERS_FILE, users.map(_encryptUserSecrets));
 }
 
 function findUser(username) {
@@ -271,7 +278,7 @@ function ensureDefaultAdmin() {
       lastLogin: null,
     });
     saveUsers(users);
-    console.log('Default admin created — admin / admin');
+    console.log('Default admin created â€” admin / admin');
   }
 }
 
@@ -291,7 +298,7 @@ function migrateOldBoards() {
     const dest = path.join(adminBoardDir, f);
     if (!fs.existsSync(dest)) {
       fs.renameSync(src, dest);
-      console.log(`Migrated board: ${f} → admin/${f}`);
+      console.log(`Migrated board: ${f} â†’ admin/${f}`);
     } else {
       // Already exists in target, just remove old file
       fs.unlinkSync(src);
@@ -307,9 +314,9 @@ if (!process.env.SESSION_SECRET) {
 ensureDefaultAdmin();
 migrateOldBoards();
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  MIDDLEWARE
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.use(express.json({ limit: '50mb' }));
 app.set('trust proxy', 1); // trust first proxy (Coolify/nginx)
 const sessionMiddleware = session({
@@ -359,9 +366,9 @@ app.use('/uploads', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  PAGE ROUTES
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get('/login', (req, res) => {
   if (req.session && req.session.user) return res.redirect('/');
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -387,9 +394,9 @@ app.get('/share/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'share.html'));
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  AUTH API
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.post('/api/auth/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
@@ -482,7 +489,7 @@ app.post('/api/auth/logout', (req, res) => {
   });
 });
 
-// ─── TWO-FACTOR AUTHENTICATION ───────────────────────────
+// â”€â”€â”€ TWO-FACTOR AUTHENTICATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Step 1: Generate a TOTP secret + QR code (setup)
 app.post('/api/auth/2fa/setup', requireAuth, async (req, res) => {
@@ -618,9 +625,9 @@ app.put('/api/auth/profile', requireAuth, async (req, res) => {
   res.json({ ok: true, displayName: users[idx].displayName, email: users[idx].email || '' });
 });
 
-// ═══════════════════════════════════════════════════════
-//  USERS LIST (authenticated — for todo assignment)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  USERS LIST (authenticated â€” for todo assignment)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get('/api/users', requireAuth, (req, res) => {
   const users = loadUsers().map(u => ({
     username: u.username,
@@ -629,9 +636,9 @@ app.get('/api/users', requireAuth, (req, res) => {
   res.json(users);
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  FILE UPLOAD (authenticated)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const MIME_EXT = {
   'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
   'image/webp': '.webp', 'image/avif': '.avif', 'application/pdf': '.pdf',
@@ -673,9 +680,9 @@ app.post('/api/upload', requireAuth, (req, res, next) => {
   });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  BOARD API (user-scoped)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function getUserBoardDir(username) {
   const dir = path.join(__dirname, 'data', 'boards', username);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -719,7 +726,7 @@ app.post('/api/boards/:name', requireAuth, (req, res) => {
     ...req.body,
     meta,
   };
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  atomicWriteJSON(filePath, data);
   res.json({ success: true });
 });
 
@@ -832,9 +839,9 @@ app.get('/api/boards/:name/thumb', requireAuth, (req, res) => {
   } catch (e) { res.status(500).end(); }
 });
 
-// ═══════════════════════════════════════════════════════
-//  BOARD SHARING — must be before /:owner/:name routes
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  BOARD SHARING â€” must be before /:owner/:name routes
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // Get share status for own board
 app.get('/api/boards/:name/share', requireAuth, (req, res) => {
@@ -864,7 +871,7 @@ app.post('/api/boards/:name/share', requireAuth, (req, res) => {
   } else if (typeof password === 'string') {
     data.meta.sharePasswordHash = bcrypt.hashSync(password, 10);
   }
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  atomicWriteJSON(filePath, data);
   res.json({ success: true, shareToken: data.meta.shareToken, hasPassword: !!data.meta.sharePasswordHash });
 });
 
@@ -875,13 +882,13 @@ app.delete('/api/boards/:name/share', requireAuth, (req, res) => {
   if (!fs.existsSync(filePath)) return res.json({ success: true });
   const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   if (data.meta) { delete data.meta.shareToken; delete data.meta.sharePasswordHash; }
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  atomicWriteJSON(filePath, data);
   res.json({ success: true });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  BOARD API KEYS  (must be before /:owner/:name routes)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // List keys for a board
 app.get('/api/boards/:name/keys', requireAuth, (req, res) => {
@@ -1001,7 +1008,7 @@ app.post('/api/boards/:owner/:name', requireAuth, (req, res) => {
       } catch (e) {}
     }
     const data = { ...req.body, meta: { created, lastEdit: new Date().toISOString(), elementCount: (req.body.elements || []).length, owner: username, collaborators } };
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    atomicWriteJSON(filePath, data);
     return res.json({ success: true });
   }
 
@@ -1014,19 +1021,19 @@ app.post('/api/boards/:owner/:name', requireAuth, (req, res) => {
   if (!collabs.includes(username) && !isAdmin) return res.status(403).json({ error: 'Access denied' });
 
   const data = { ...req.body, meta: { created: existing.meta?.created || new Date().toISOString(), lastEdit: new Date().toISOString(), elementCount: (req.body.elements || []).length, owner, collaborators: collabs } };
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  atomicWriteJSON(filePath, data);
   res.json({ success: true });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  BOARD API KEYS
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  MCP BOARD API  (authenticated via X-Board-Key header)
 //  Stable routes: /mcp/:owner/:boardId/... (UUID, survives renames)
 //  Legacy routes: /mcp/:owner/:board/...   (board name, backwards compat)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -1034,7 +1041,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 app.get('/mcp/:owner/:boardId', mcpLimiter, mcpCors, (req, res, next) => {
   if (!UUID_RE.test(req.params.boardId)) return next('route');
   if (!req.headers['x-board-key']) {
-    // No API key header → return MCP server info so claude.ai can confirm endpoint is live
+    // No API key header â†’ return MCP server info so claude.ai can confirm endpoint is live
     return res.json({ name: 'ssbd', version: '1.0.0', protocolVersion: '2024-11-05' });
   }
   next();
@@ -1102,13 +1109,13 @@ app.put('/mcp/:owner/:boardId', mcpLimiter, (req, res, next) => {
   meta.lastEdit = new Date().toISOString();
   meta.elementCount = (req.body.elements || []).length;
   const board = { ...req.body, meta };
-  fs.writeFileSync(req.boardFilePath, JSON.stringify(board, null, 2));
+  atomicWriteJSON(req.boardFilePath, board);
   const room = `${req.params.owner}/${req.boardName}`;
   broadcastToRoom(room, null, { type: 'state', elements: board.elements || [], connections: board.connections || [] });
   res.json({ success: true });
 });
 
-// Stable: MCP JSON-RPC endpoint by boardId — accepts Bearer token (OAuth/claude.ai) or X-Board-Key
+// Stable: MCP JSON-RPC endpoint by boardId â€” accepts Bearer token (OAuth/claude.ai) or X-Board-Key
 app.options('/mcp/:owner/:boardId', (req, res, next) => {
   if (!UUID_RE.test(req.params.boardId)) return next('route');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1237,19 +1244,19 @@ app.put('/mcp/:owner/:board', mcpLimiter, (req, res, next) => {
   meta.lastEdit = new Date().toISOString();
   meta.elementCount = (req.body.elements || []).length;
   const board = { ...req.body, meta };
-  fs.writeFileSync(filePath, JSON.stringify(board, null, 2));
+  atomicWriteJSON(filePath, board);
   const room = `${req.params.owner}/${req.params.board}`;
   broadcastToRoom(room, null, { type: 'state', elements: board.elements || [], connections: board.connections || [] });
   res.json({ success: true });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  OAUTH 2.0 + REMOTE MCP HTTP ENDPOINT (claude.ai connector)
 //  Connect URL: /mcp-remote
-//  Auth: user enters board API key in OAuth form → Bearer token
-// ═══════════════════════════════════════════════════════
+//  Auth: user enters board API key in OAuth form â†’ Bearer token
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-// Temporary auth codes: code → { key, expires }
+// Temporary auth codes: code â†’ { key, expires }
 const _mcpAuthCodes = new Map();
 
 // CORS middleware for MCP + OAuth endpoints (claude.ai is cross-origin)
@@ -1278,14 +1285,14 @@ app.get('/.well-known/oauth-authorization-server', mcpCors, (req, res) => {
   });
 });
 
-// OAuth authorize — show key entry form
+// OAuth authorize â€” show key entry form
 app.get('/oauth/authorize', mcpCors, (req, res) => {
   const { client_id, redirect_uri, state, code_challenge, code_challenge_method } = req.query;
   const escaped = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SSBD — Connect Board</title>
+<title>SSBD â€” Connect Board</title>
 <style>
   body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#111;color:#eee;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
   .box{background:#1a1a1a;border:1px solid #333;padding:40px;width:100%;max-width:400px}
@@ -1298,7 +1305,7 @@ app.get('/oauth/authorize', mcpCors, (req, res) => {
   .err{color:#FF4500;font-size:11px;margin-top:12px}
 </style></head>
 <body><div class="box">
-  <h2>● SAMESAMEBUTDIFFERENT</h2>
+  <h2>â— SAMESAMEBUTDIFFERENT</h2>
   <p>Enter your board API key to connect Claude.</p>
   <form method="POST" action="/oauth/authorize">
     <input type="hidden" name="redirect_uri" value="${escaped(redirect_uri)}">
@@ -1306,7 +1313,7 @@ app.get('/oauth/authorize', mcpCors, (req, res) => {
     <input type="hidden" name="code_challenge" value="${escaped(code_challenge)}">
     <input type="hidden" name="code_challenge_method" value="${escaped(code_challenge_method)}">
     <input type="password" name="key" placeholder="ssbd_..." autocomplete="off" required>
-    <button type="submit">CONNECT →</button>
+    <button type="submit">CONNECT â†’</button>
   </form>
 </div></body></html>`);
 });
@@ -1348,7 +1355,7 @@ app.post('/oauth/token', mcpCors, express.json(), express.urlencoded({ extended:
 setInterval(() => { const now = Date.now(); _mcpAuthCodes.forEach((v, k) => { if (v.expires < now) _mcpAuthCodes.delete(k); }); }, 60 * 1000);
 
 const REMOTE_MCP_TOOLS = [
-  { name: 'read_board',      description: 'Read the full board — returns all elements and connections.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'read_board',      description: 'Read the full board â€” returns all elements and connections.', inputSchema: { type: 'object', properties: {} } },
   { name: 'list_elements',   description: 'List elements, optionally filtered by type (text,note,image,rect,circle,arrow,todo,llmchat,heading,file,pin,draw,icon,calendar).', inputSchema: { type: 'object', properties: { type: { type: 'string' } } } },
   { name: 'search_elements', description: 'Search elements whose text content contains the query string.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'add_element',     description: 'Add a new element. For images call upload_image first.', inputSchema: { type: 'object', properties: { type: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, content: { type: 'string' }, src: { type: 'string' }, color: { type: 'string' } }, required: ['type', 'x', 'y'] } },
@@ -1370,7 +1377,7 @@ async function remoteMcpCallTool(name, args, boardFilePath, owner, boardName) {
     meta.lastEdit = new Date().toISOString();
     meta.elementCount = (data.elements || []).length;
     const board = { ...data, meta };
-    fs.writeFileSync(boardFilePath, JSON.stringify(board, null, 2));
+    atomicWriteJSON(boardFilePath, board);
     broadcastToRoom(`${owner}/${boardName}`, null, { type: 'state', elements: board.elements || [], connections: board.connections || [] });
   };
   const text = (t) => ({ content: [{ type: 'text', text: typeof t === 'string' ? t : JSON.stringify(t, null, 2) }] });
@@ -1466,9 +1473,9 @@ app.post('/mcp-remote', mcpCors, mcpLimiter, async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  SUGGESTIONS API (shared, authenticated)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const suggestionsFile = path.join(__dirname, 'data', '_suggestions.json');
 
 app.get('/api/suggestions', requireAuth, (req, res) => {
@@ -1488,7 +1495,7 @@ app.post('/api/suggestions', requireAuth, (req, res) => {
     time: new Date().toISOString(),
     user: req.session.user.username,
   });
-  fs.writeFileSync(suggestionsFile, JSON.stringify(suggestions, null, 2));
+  atomicWriteJSON(suggestionsFile, suggestions);
   res.json({ success: true });
 });
 
@@ -1512,7 +1519,7 @@ app.put('/api/suggestions/:index', requireAuth, (req, res) => {
 
   suggestions[idx].text = text.trim();
   suggestions[idx].edited = new Date().toISOString();
-  fs.writeFileSync(suggestionsFile, JSON.stringify(suggestions, null, 2));
+  atomicWriteJSON(suggestionsFile, suggestions);
   res.json({ success: true });
 });
 
@@ -1532,13 +1539,13 @@ app.delete('/api/suggestions/:index', requireAuth, (req, res) => {
   if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Not allowed' });
 
   suggestions.splice(idx, 1);
-  fs.writeFileSync(suggestionsFile, JSON.stringify(suggestions, null, 2));
+  atomicWriteJSON(suggestionsFile, suggestions);
   res.json({ success: true });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  EXPORT API
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.post('/api/export', requireAuth, (req, res) => {
   const { data } = req.body;
   if (!data) return res.status(400).json({ error: 'No data' });
@@ -1548,9 +1555,9 @@ app.post('/api/export', requireAuth, (req, res) => {
   res.json({ url: '/uploads/' + filename });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  ADMIN API
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // Stats
 app.get('/api/admin/stats', requireAdmin, (req, res) => {
@@ -1780,7 +1787,7 @@ app.post('/api/admin/boards/:username/:name/collaborators', requireAdmin, (req, 
   if (data.meta.collaborators.includes(collab)) return res.status(409).json({ error: 'Already a collaborator' });
 
   data.meta.collaborators.push(collab);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  atomicWriteJSON(filePath, data);
   res.json({ success: true, collaborators: data.meta.collaborators });
 });
 
@@ -1799,7 +1806,7 @@ app.delete('/api/admin/boards/:username/:name/collaborators/:user', requireAdmin
   if (idx < 0) return res.status(404).json({ error: 'Not a collaborator' });
 
   data.meta.collaborators.splice(idx, 1);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  atomicWriteJSON(filePath, data);
   res.json({ success: true, collaborators: data.meta.collaborators });
 });
 
@@ -1829,13 +1836,13 @@ app.patch('/api/admin/suggestions/:index/toggle-done', requireAdmin, (req, res) 
     delete suggestions[idx].doneAt;
   }
 
-  fs.writeFileSync(suggestionsFile, JSON.stringify(suggestions, null, 2));
+  atomicWriteJSON(suggestionsFile, suggestions);
   res.json({ success: true, done: suggestions[idx].done });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // Admin Settings
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get('/api/admin/settings', requireAdmin, (req, res) => {
   res.json(loadSettings());
 });
@@ -1860,13 +1867,13 @@ app.delete('/api/admin/suggestions/:index', requireAdmin, (req, res) => {
   if (idx < 0 || idx >= suggestions.length) return res.status(404).json({ error: 'Not found' });
 
   suggestions.splice(idx, 1);
-  fs.writeFileSync(suggestionsFile, JSON.stringify(suggestions, null, 2));
+  atomicWriteJSON(suggestionsFile, suggestions);
   res.json({ success: true });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  STATISTICS
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get('/api/stats', requireAuth, (req, res) => {
   const boardDir = path.join(__dirname, 'data', 'boards', req.session.user.username);
   let boards = [];
@@ -1899,9 +1906,9 @@ app.get('/api/stats', requireAuth, (req, res) => {
   res.json({ boards, totalBoards: boards.length, totalElements, totalConnections, allTypes });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  PUBLIC SHARE API (no auth required)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // Public: fetch shared board data (no auth required)
 app.post('/api/share/:token', (req, res) => {
@@ -1944,9 +1951,9 @@ app.post('/api/share/:token', (req, res) => {
   });
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  GOOGLE OAUTH 2.0 + CALENDAR
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
 
@@ -2015,7 +2022,7 @@ app.get('/api/oauth/google', requireAuth, (req, res) => {
   const user  = users.find(u => u.id === req.session.user.id);
   let clientId;
   try { ({ clientId } = _getGoogleCreds(user)); } catch {
-    return res.status(400).send('Google Client ID not configured. Go to Settings → Calendar and enter your credentials first.');
+    return res.status(400).send('Google Client ID not configured. Go to Settings â†’ Calendar and enter your credentials first.');
   }
   const state = crypto.randomBytes(16).toString('hex');
   const redirectUri = getRedirectUri(req);
@@ -2164,9 +2171,9 @@ app.get('/api/calendar/events', requireAuth, async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  LLM PROXY (server-side, uses stored user API key)
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.post('/api/llm/chat', requireAuth, llmLimiter, async (req, res) => {
   const { messages, model } = req.body;
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -2251,9 +2258,9 @@ app.post('/api/llm/chat', requireAuth, llmLimiter, async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════
-//  WEBSOCKET — Real-Time Collaboration
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  WEBSOCKET â€” Real-Time Collaboration
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
@@ -2309,7 +2316,7 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
-const rooms = new Map(); // roomKey ("owner/board") → Set<ws>
+const rooms = new Map(); // roomKey ("owner/board") â†’ Set<ws>
 
 function getUserColor(username) {
   let hash = 0;
@@ -2372,7 +2379,7 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
-    // Guests are read-only — ignore everything they send
+    // Guests are read-only â€” ignore everything they send
     if (ws.readOnly) return;
 
     if (msg.type === 'join') {
@@ -2434,10 +2441,11 @@ wss.on('connection', (ws) => {
   ws.on('error', () => leaveRoom(ws));
 });
 
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  START
-// ═══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 migrateBoardKeys();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`SAMESAMEBUTDIFFERENT running on port ${PORT}`);
 });
+
