@@ -1347,6 +1347,11 @@ app.get('/oauth/authorize', mcpCors, (req, res) => {
 app.post('/oauth/authorize', mcpCors, express.urlencoded({ extended: false }), (req, res) => {
   const { key, redirect_uri, state } = req.body;
   if (!key || !key.startsWith('ssbd_')) return res.status(400).send('Invalid key format');
+  // Validate redirect_uri — only allow claude.ai and localhost origins
+  let parsedRedirect;
+  try { parsedRedirect = new URL(redirect_uri); } catch { return res.status(400).send('Invalid redirect_uri'); }
+  const allowedHosts = /^(localhost|127\.0\.0\.1|\[::1\]|.*\.claude\.ai|.*\.anthropic\.com)$/i;
+  if (!allowedHosts.test(parsedRedirect.hostname)) return res.status(400).send('redirect_uri not allowed');
   const hash = hashKey(key);
   const keys = loadBoardKeys();
   if (!keys.find(k => k.keyHash === hash)) return res.status(401).send('Key not found');
