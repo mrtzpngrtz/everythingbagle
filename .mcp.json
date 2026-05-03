@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "wollmilchsau": {
+      "type": "http",
+      "url": "https://wollmilchsau.aop.studio/mcp-remote",
+      "headers": {
+        "Authorization": "Bearer ssbd_ae99328a45240ed3ee3a1094f1e9c6edb3ee977c8acfc9302d7faa458af26328"
+      }
+    }
+  }
+}
