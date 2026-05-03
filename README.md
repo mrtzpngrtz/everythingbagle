@@ -37,10 +37,16 @@ Infinite canvas that can do it all.
 
 ### Users & Settings
 - **User Accounts** — Login, registration (toggleable by admin)
+- **Two-Factor Authentication** — TOTP-based 2FA (Google Authenticator, etc.)
 - **Profile Settings** — Display name, email, password change
 - **LLM Settings** — Provider (Anthropic / OpenAI / Google / OpenRouter), API key, default model, system prompt
+- **Google Calendar** — Connect via OAuth 2.0; view calendar events on the canvas
 - **Statistics** — Per-board element counts and type breakdown
 - **Admin Panel** — User management, board overview, feature request inbox
+
+### API / MCP
+- **Board API Keys** — Generate per-board API keys for programmatic read/write access
+- **MCP Connector** — Remote MCP HTTP endpoint at `/mcp-remote` for claude.ai integration; supports OAuth 2.0 auth flow
 
 ### Keyboard Shortcuts
 
@@ -92,10 +98,11 @@ On first run a default admin account is created (`admin` / `admin`) — change t
 | `SESSION_SECRET` | Yes | Random string used to sign session cookies and derive the at-rest encryption key. Server exits on startup if not set. |
 | `NODE_ENV` | No | Set to `production` to enable secure cookie flag (requires HTTPS). |
 | `PORT` | No | Port to listen on. Defaults to `3000`. |
+| `SSBD_UPLOAD_BASE` | No | Base path for local filesystem image imports via MCP. Defaults to `/mnt/user-data/uploads`. |
 
 Generate a secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
-> **Note:** `SESSION_SECRET` also derives the encryption key for sensitive data stored at rest (LLM API keys, Google OAuth tokens). Rotating it will invalidate stored keys — users will need to re-enter them.
+> **Note:** `SESSION_SECRET` also derives the at-rest encryption key for sensitive user data (LLM API keys, Google OAuth tokens). Rotating it will invalidate stored credentials — users will need to re-enter them.
 
 ### Docker / Self-hosted
 
@@ -112,4 +119,4 @@ Mount `data` and `uploads` as volumes to persist boards, users, and uploaded fil
 
 ## Stack
 
-Node.js + Express · Vanilla JS · SVG · WebSocket · bcrypt · No build tools
+Node.js + Express · Vanilla JS · SVG · WebSocket · bcrypt · helmet · No build tools

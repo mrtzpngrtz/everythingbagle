@@ -663,10 +663,38 @@ const Storage = {
         return;
       }
 
-      boards.forEach(board => {
+      const pinned = this.getPinnedBoards();
+      const sorted = [...boards].sort((a, b) => {
+        const ap = !a.shared && pinned.includes(a.name) ? 0 : 1;
+        const bp = !b.shared && pinned.includes(b.name) ? 0 : 1;
+        return ap - bp;
+      });
+
+      const hasPinned = sorted.some(b => !b.shared && pinned.includes(b.name));
+      let sectionShown = { pinned: false, rest: false };
+
+      sorted.forEach(board => {
         const isShared = board.shared;
+        const isPinned = !isShared && pinned.includes(board.name);
+
+        if (hasPinned) {
+          if (isPinned && !sectionShown.pinned) {
+            const h = document.createElement('div');
+            h.className = 'dash-section-header';
+            h.textContent = 'PINNED';
+            grid.appendChild(h);
+            sectionShown.pinned = true;
+          } else if (!isPinned && !sectionShown.rest) {
+            const h = document.createElement('div');
+            h.className = 'dash-section-header';
+            h.textContent = 'ALL BOARDS';
+            grid.appendChild(h);
+            sectionShown.rest = true;
+          }
+        }
+
         const card = document.createElement('div');
-        card.className = 'dash-card';
+        card.className = 'dash-card' + (isPinned ? ' is-pinned' : '');
 
         // Thumbnail
         const thumbUrl = isShared
@@ -690,11 +718,7 @@ const Storage = {
 
         const meta = document.createElement('div');
         meta.className = 'dash-card-meta';
-        meta.innerHTML = `
-          <span>${board.elementCount || 0} elements</span>
-          <span>edited ${this.formatTimeAgo(board.lastEdit)}</span>
-          ${board.created ? `<span>created ${this.formatDateTime(board.created)}</span>` : ''}
-        `;
+        meta.innerHTML = `<span>${board.elementCount || 0} elements · edited ${this.formatTimeAgo(board.lastEdit)}</span>`;
 
         if (isShared) {
           const badge = document.createElement('div');
@@ -718,9 +742,6 @@ const Storage = {
         footerRight.className = 'dash-card-footer-right';
 
         if (!isShared) {
-          const pinned = this.getPinnedBoards();
-          const isPinned = pinned.includes(board.name);
-
           const pinBtn = document.createElement('button');
           pinBtn.className = 'dash-card-btn' + (isPinned ? ' is-pinned' : '');
           pinBtn.textContent = '★';

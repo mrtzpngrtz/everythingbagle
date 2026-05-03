@@ -213,6 +213,18 @@ html, body {
   margin-bottom: 40px;
 }
 
+.dash-section-header {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--mid-grey);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--light-grey);
+  margin-bottom: 4px;
+}
+
 .dash-card {
   border: var(--border);
   background: var(--white);
@@ -220,6 +232,10 @@ html, body {
   transition: border-color 0.15s;
   display: flex;
   flex-direction: column;
+}
+
+.dash-card.is-pinned {
+  border-top: 2px solid var(--accent);
 }
 
 .dash-card:hover {
@@ -264,9 +280,9 @@ html, body {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   color: var(--black);
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -274,15 +290,18 @@ html, body {
 
 .dash-card-meta {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: 6px;
 }
 
 .dash-card-meta span {
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--dark-grey);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dash-card-footer {
@@ -641,6 +660,15 @@ body.dark #dashboard-import-board:hover {
 }
 
 body.dark .dashboard-title { color: #E8E8E8; }
+
+body.dark .dash-section-header {
+  color: #444;
+  border-bottom-color: #2a2a2a;
+}
+
+body.dark .dash-card.is-pinned {
+  border-top-color: #FF5722;
+}
 
 body.dark .modal-content {
   background: #1A1A1A;
