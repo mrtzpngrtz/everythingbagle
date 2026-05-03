@@ -2649,7 +2649,7 @@ body.dark #suggestion-submit:hover {
   opacity: 1;
 }
 
-/* Pin element */
+/* Pin element — drag body to move */
 .el-pin {
   width: 22px;
   height: 22px;
@@ -2657,11 +2657,6 @@ body.dark #suggestion-submit:hover {
   background: radial-gradient(circle at 38% 35%, #FF5555, #AA0000);
   box-shadow: 1px 2px 5px rgba(0,0,0,0.45), inset 0 1px 2px rgba(255,255,255,0.25);
   position: relative;
-  cursor: crosshair;
-}
-
-/* Shift+drag on pin = move */
-.canvas-element:has(.el-pin).selected .el-pin {
   cursor: move;
 }
 .el-pin::after {
@@ -2675,26 +2670,28 @@ body.dark #suggestion-submit:hover {
   left: 5px;
 }
 
-/* Pin ring anchor — covers and surrounds the pin, acts as connect handle */
+/* Pin center connect dot — drag to draw thread */
 .connection-anchor.pin-ring {
   position: absolute;
-  width: 44px;
-  height: 44px;
+  width: 10px;
+  height: 10px;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  border: 2px dashed rgba(180, 0, 0, 0.0);
-  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.0);
+  background: rgba(255, 255, 255, 0.0);
   opacity: 0;
   cursor: crosshair;
-  transition: opacity 0.15s, border-color 0.15s;
+  z-index: 2;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
 
 .canvas-element:hover .connection-anchor.pin-ring,
 .canvas-element.selected .connection-anchor.pin-ring {
   opacity: 1;
-  border-color: rgba(200, 0, 0, 0.55);
+  border-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.35);
 }
 
 .connection-label {

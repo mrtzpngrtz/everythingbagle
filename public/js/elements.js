@@ -728,15 +728,9 @@ const Elements = {
 
       if (target.classList.contains('connection-anchor')) {
         const parentEl = target.closest('.canvas-element');
-        const parentData = this.getData(parentEl.dataset.id);
-        // Shift+drag on a pin-ring should move the pin, not draw a connection
-        if (e.shiftKey && parentData && parentData.type === 'pin') {
-          // fall through to normal drag logic below
-        } else {
-          const anchor = target.dataset.anchor;
-          Connections.startDrawing(parentEl.dataset.id, anchor, e);
-          return;
-        }
+        const anchor = target.dataset.anchor;
+        Connections.startDrawing(parentEl.dataset.id, anchor, e);
+        return;
       }
 
       if (target.classList.contains('resize-handle')) {
@@ -831,29 +825,6 @@ const Elements = {
           const id = elementDom.dataset.id;
           const data = this.getData(id);
           if (data && data.locked) return;
-
-          // Pins: drag to draw thread, Shift+drag to move
-          if (data.type === 'pin' && !e.shiftKey) {
-            if (!this.selected.includes(id)) this.select(id);
-            const pinStartX = e.clientX, pinStartY = e.clientY;
-            let connectionStarted = false;
-            const onPinMove = (ev) => {
-              if (connectionStarted) return;
-              if (Math.hypot(ev.clientX - pinStartX, ev.clientY - pinStartY) > 4) {
-                connectionStarted = true;
-                window.removeEventListener('mousemove', onPinMove);
-                window.removeEventListener('mouseup', onPinUp);
-                Connections.startDrawing(id, 'center', ev);
-              }
-            };
-            const onPinUp = () => {
-              window.removeEventListener('mousemove', onPinMove);
-              window.removeEventListener('mouseup', onPinUp);
-            };
-            window.addEventListener('mousemove', onPinMove);
-            window.addEventListener('mouseup', onPinUp);
-            return;
-          }
 
           if (e.shiftKey) {
             this.select(id, true);

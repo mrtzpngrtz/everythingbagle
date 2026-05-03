@@ -1441,6 +1441,12 @@ async function remoteMcpCallTool(name, args, boardFilePath, owner, boardName) {
 }
 
 app.get('/mcp-remote', mcpCors, (req, res) => {
+  const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  if (!bearer) {
+    const base = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    res.setHeader('WWW-Authenticate', `Bearer realm="ssbd", resource_metadata="${base}/.well-known/oauth-authorization-server"`);
+    return res.status(401).json({ error: 'unauthorized' });
+  }
   res.status(200).json({ name: 'ssbd', version: '1.0.0', protocol: 'MCP/2024-11-05' });
 });
 
@@ -1448,7 +1454,11 @@ app.post('/mcp-remote', mcpCors, mcpLimiter, async (req, res) => {
   // Accept Bearer token (OAuth flow) or key-in-URL (?key=) for backwards compat
   const bearer = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
   const rawKey = bearer || req.query.key || '';
-  if (!rawKey) return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'Missing auth' } });
+  if (!rawKey) {
+    const base = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    res.setHeader('WWW-Authenticate', `Bearer realm="ssbd", resource_metadata="${base}/.well-known/oauth-authorization-server"`);
+    return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'Missing auth' } });
+  }
   const hash = hashKey(rawKey);
   const keys = loadBoardKeys();
   const entry = keys.find(k => k.keyHash === hash);
