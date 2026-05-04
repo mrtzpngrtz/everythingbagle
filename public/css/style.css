@@ -375,7 +375,7 @@ body.flow-mode #canvas-container {
   display: block;
   position: fixed;
   bottom: 20px;
-  left: 20px;
+  left: 48px;
   z-index: 9999;
   background: var(--white);
   color: var(--black);
@@ -2339,7 +2339,7 @@ body.dark .btn-dialog-cancel:hover { background: #2A2A2A; }
 #suggestions-trigger {
   position: fixed;
   bottom: 16px;
-  left: 68px;
+  left: 102px;
   width: 42px;
   height: 42px;
   background: var(--white);
