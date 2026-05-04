@@ -127,24 +127,57 @@ const TOOLS = [
     },
   },
   {
-    name: 'update_element',
-    description: 'Update properties of an existing element by id.',
+    name: 'add_arrow',
+    description: 'Create a directed connection between two existing elements.',
     inputSchema: {
       type: 'object',
       properties: {
-        id:      { type: 'string', description: 'Element id' },
-        updates: { type: 'object', description: 'Key/value pairs to merge into the element' },
+        fromId:     { type: 'string', description: 'Source element id' },
+        toId:       { type: 'string', description: 'Target element id (may equal fromId for self-loop)' },
+        label:      { type: 'string', description: 'Optional label shown at midpoint' },
+        style:      { type: 'string', enum: ['solid','dashed','dotted'], description: 'Line style (default: solid)' },
+        arrowhead:  { type: 'string', enum: ['end','both','none'], description: 'Arrowhead placement (default: end)' },
+        routing:    { type: 'string', enum: ['straight','curved','orthogonal'], description: 'Path routing (default: straight; orthogonal=straight best-effort)' },
+        fromAnchor: { type: 'string', enum: ['auto','top','right','bottom','left','center'], description: 'Source attachment point (default: center)' },
+        toAnchor:   { type: 'string', enum: ['auto','top','right','bottom','left','center'], description: 'Target attachment point (default: center)' },
+        color:      { type: 'string', description: 'Stroke color hex or named (e.g. "#ff0000")' },
       },
-      required: ['id', 'updates'],
+      required: ['fromId', 'toId'],
+    },
+  },
+  {
+    name: 'update_element',
+    description: 'Update properties of an existing element or connection by id. Pass flat fields directly. Legacy {id, updates:{...}} format still supported.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id:          { type: 'string', description: 'Element or connection id' },
+        x:           { type: 'number' },
+        y:           { type: 'number' },
+        width:       { type: 'number' },
+        height:      { type: 'number' },
+        content:     { type: 'string' },
+        title:       { type: 'string' },
+        color:       { type: 'string' },
+        borderColor: { type: 'string' },
+        zIndex:      { type: 'number' },
+        locked:      { type: 'boolean' },
+        fromId:      { type: 'string', description: 'For connections: new source element id' },
+        toId:        { type: 'string', description: 'For connections: new target element id' },
+        label:       { type: 'string', description: 'For connections: label text' },
+        updates:     { type: 'object', description: 'Legacy: key/value pairs to merge (still supported)' },
+      },
+      required: ['id'],
     },
   },
   {
     name: 'delete_element',
-    description: 'Delete an element by id.',
+    description: 'Delete an element or connection by id. For elements, cascades to connected arrows by default.',
     inputSchema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: 'Element id to delete' },
+        id:      { type: 'string', description: 'Element or connection id to delete' },
+        cascade: { type: 'boolean', description: 'Also delete connected arrows when deleting an element (default true)' },
       },
       required: ['id'],
     },
@@ -259,22 +292,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'update_element': {
         const board = await readBoard();
-        const idx = (board.elements || []).findIndex(e => e.id === args.id);
-        if (idx < 0) throw new Error(`Element ${args.id} not found`);
-        const updated = { ...board.elements[idx], ...args.updates, id: args.id };
+        const { id, updates: legacyUpdates, ...flat } = args;
+        const allUpdates = legacyUpdates ? { ...legacyUpdates, ...flat } : flat;
+        const connIdx = (board.connections || []).findIndex(c => c.id === id);
+        if (connIdx >= 0) {
+          const connections = [...board.connections];
+          const patch = {};
+          if (allUpdates.fromId  !== undefined) patch.from  = allUpdates.fromId;
+          if (allUpdates.toId    !== undefined) patch.to    = allUpdates.toId;
+          if (allUpdates.label   !== undefined) patch.label = allUpdates.label;
+          if (allUpdates.color   !== undefined) patch.color = allUpdates.color;
+          if (allUpdates.style   !== undefined) patch.style = allUpdates.style;
+          connections[connIdx] = { ...connections[connIdx], ...patch, id };
+          await writeBoard({ ...board, connections });
+          return { content: [{ type: 'text', text: JSON.stringify(connections[connIdx], null, 2) }] };
+        }
+        const idx = (board.elements || []).findIndex(e => e.id === id);
+        if (idx < 0) throw new Error(`Element ${id} not found`);
+        const el = board.elements[idx];
+        if (el.locked && allUpdates.locked !== false) throw new Error(`Element ${id} is locked. Pass locked:false to unlock.`);
         const elements = [...board.elements];
-        elements[idx] = updated;
+        elements[idx] = { ...el, ...allUpdates, id };
         await writeBoard({ ...board, elements });
-        return { content: [{ type: 'text', text: JSON.stringify(updated, null, 2) }] };
+        return { content: [{ type: 'text', text: JSON.stringify(elements[idx], null, 2) }] };
       }
 
       case 'delete_element': {
         const board = await readBoard();
-        const before = (board.elements || []).length;
+        const cascade = args.cascade !== false;
+        const connsBefore = (board.connections || []).length;
+        const connections = (board.connections || []).filter(c => c.id !== args.id);
+        if (connections.length < connsBefore) {
+          await writeBoard({ ...board, connections });
+          return { content: [{ type: 'text', text: JSON.stringify({ deletedId: args.id, cascadeDeletedIds: [] }) }] };
+        }
+        const el = (board.elements || []).find(e => e.id === args.id);
+        if (!el) throw new Error(`Element ${args.id} not found`);
+        if (el.locked) throw new Error(`Element ${args.id} is locked`);
         const elements = (board.elements || []).filter(e => e.id !== args.id);
-        if (elements.length === before) throw new Error(`Element ${args.id} not found`);
-        await writeBoard({ ...board, elements });
-        return { content: [{ type: 'text', text: `Deleted element ${args.id}` }] };
+        let finalConns = board.connections || [];
+        let cascadeDeletedIds = [];
+        if (cascade) {
+          const dangling = finalConns.filter(c => c.from === args.id || c.to === args.id);
+          cascadeDeletedIds = dangling.map(c => c.id);
+          finalConns = finalConns.filter(c => c.from !== args.id && c.to !== args.id);
+        }
+        await writeBoard({ ...board, elements, connections: finalConns });
+        return { content: [{ type: 'text', text: JSON.stringify({ deletedId: args.id, cascadeDeletedIds }) }] };
       }
 
       case 'push_todo_items': {
@@ -308,6 +372,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         elements[idx] = { ...el, items };
         await writeBoard({ ...board, elements });
         return { content: [{ type: 'text', text: `Item ${args.index} "${items[args.index].text}" marked ${args.done ? 'done' : 'undone'}` }] };
+      }
+
+      case 'add_arrow': {
+        const board = await readBoard();
+        const els = board.elements || [];
+        if (!els.find(e => e.id === args.fromId)) throw new Error(`Source element ${args.fromId} not found`);
+        if (!els.find(e => e.id === args.toId))   throw new Error(`Target element ${args.toId} not found`);
+        let connStyle = args.routing === 'curved' ? 'curve' : 'arrow';
+        if (args.arrowhead === 'none') connStyle = 'line';
+        const fromAnchor = (!args.fromAnchor || args.fromAnchor === 'auto') ? 'center' : args.fromAnchor;
+        const toAnchor   = (!args.toAnchor   || args.toAnchor   === 'auto') ? 'center' : args.toAnchor;
+        const conn = {
+          id: 'el_mcp_' + Math.random().toString(36).slice(2, 10),
+          from: args.fromId, fromAnchor,
+          to: args.toId, toAnchor,
+          style: connStyle,
+          label: args.label || '',
+          ...(args.color ? { color: args.color } : {}),
+          ...(['dashed','dotted'].includes(args.style) ? { lineStyle: args.style } : {}),
+          ...(args.arrowhead === 'both' ? { arrowhead: 'both' } : {}),
+        };
+        const connections = [...(board.connections || []), conn];
+        await writeBoard({ ...board, connections });
+        return { content: [{ type: 'text', text: JSON.stringify(conn, null, 2) }] };
       }
 
       default:

@@ -1174,7 +1174,7 @@ app.post('/mcp/:owner/:boardId', mcpLimiter, (req, res, next) => {
     if (method === 'ping') return ok({});
     if (method === 'tools/list') return ok({ tools: REMOTE_MCP_TOOLS });
     if (method === 'tools/call') {
-      if (entry.readOnly && ['add_element','update_element','delete_element','push_todo_items','set_todo_item_done'].includes(params?.name)) return err(-32003, 'Key is read-only');
+      if (entry.readOnly && ['add_element','add_arrow','update_element','delete_element','push_todo_items','set_todo_item_done'].includes(params?.name)) return err(-32003, 'Key is read-only');
       const result = await remoteMcpCallTool(params.name, params.arguments || {}, boardFilePath, entry.owner, boardName);
       return ok({ content: result.content, isError: false });
     }
@@ -1390,8 +1390,9 @@ const REMOTE_MCP_TOOLS = [
   { name: 'list_elements',   description: 'List elements, optionally filtered by type (text,note,image,rect,circle,arrow,todo,llmchat,heading,file,pin,draw,icon,calendar).', inputSchema: { type: 'object', properties: { type: { type: 'string' } } } },
   { name: 'search_elements', description: 'Search elements whose text content contains the query string.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'add_element',     description: 'Add a new element. For images call upload_image first.', inputSchema: { type: 'object', properties: { type: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, content: { type: 'string' }, src: { type: 'string' }, color: { type: 'string' } }, required: ['type', 'x', 'y'] } },
-  { name: 'update_element',  description: 'Merge updates into an existing element by id.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, updates: { type: 'object' } }, required: ['id', 'updates'] } },
-  { name: 'delete_element',  description: 'Delete an element by id.', inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
+  { name: 'add_arrow',       description: 'Create a directed connection between two existing elements.', inputSchema: { type: 'object', properties: { fromId: { type: 'string', description: 'Source element id' }, toId: { type: 'string', description: 'Target element id (may equal fromId for self-loop)' }, label: { type: 'string' }, style: { type: 'string', enum: ['solid','dashed','dotted'] }, arrowhead: { type: 'string', enum: ['end','both','none'] }, routing: { type: 'string', enum: ['straight','curved','orthogonal'] }, fromAnchor: { type: 'string', enum: ['auto','top','right','bottom','left','center'] }, toAnchor: { type: 'string', enum: ['auto','top','right','bottom','left','center'] }, color: { type: 'string' } }, required: ['fromId','toId'] } },
+  { name: 'update_element',  description: 'Update properties of an existing element or connection by id. Pass flat fields directly (x, y, content, color …). Legacy {id, updates:{…}} format still accepted.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' }, content: { type: 'string' }, title: { type: 'string' }, color: { type: 'string' }, borderColor: { type: 'string' }, zIndex: { type: 'number' }, locked: { type: 'boolean' }, fromId: { type: 'string', description: 'For connections: new source id' }, toId: { type: 'string', description: 'For connections: new target id' }, label: { type: 'string', description: 'For connections: label text' }, updates: { type: 'object', description: 'Legacy: key/value pairs to merge (still supported)' } }, required: ['id'] } },
+  { name: 'delete_element',  description: 'Delete an element or connection by id. For elements, cascades to connected arrows by default.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, cascade: { type: 'boolean', description: 'Also delete connected arrows (default true)' } }, required: ['id'] } },
   { name: 'push_todo_items', description: 'Append items to an existing todo list without replacing existing ones.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, items: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, done: { type: 'boolean' }, important: { type: 'boolean' } }, required: ['text'] } } }, required: ['id', 'items'] } },
   { name: 'set_todo_item_done', description: 'Mark a todo item done/undone by zero-based index.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, index: { type: 'number' }, done: { type: 'boolean' } }, required: ['id', 'index', 'done'] } },
 ];
@@ -1424,16 +1425,48 @@ async function remoteMcpCallTool(name, args, boardFilePath, owner, boardName) {
       return text(el);
     }
     case 'update_element': {
-      const b = readBoard(); const idx = (b.elements || []).findIndex(e => e.id === args.id);
-      if (idx < 0) throw new Error(`Element ${args.id} not found`);
-      const elements = [...b.elements]; elements[idx] = { ...elements[idx], ...args.updates, id: args.id };
+      const b = readBoard();
+      const { id, updates: legacyUpdates, ...flat } = args;
+      const allUpdates = legacyUpdates ? { ...legacyUpdates, ...flat } : flat;
+      const connIdx = (b.connections || []).findIndex(c => c.id === id);
+      if (connIdx >= 0) {
+        const connections = [...b.connections];
+        const patch = {};
+        if (allUpdates.fromId  !== undefined) patch.from  = allUpdates.fromId;
+        if (allUpdates.toId    !== undefined) patch.to    = allUpdates.toId;
+        if (allUpdates.label   !== undefined) patch.label = allUpdates.label;
+        if (allUpdates.color   !== undefined) patch.color = allUpdates.color;
+        if (allUpdates.style   !== undefined) patch.style = allUpdates.style;
+        connections[connIdx] = { ...connections[connIdx], ...patch, id };
+        writeBoard({ ...b, connections }); return text(connections[connIdx]);
+      }
+      const idx = (b.elements || []).findIndex(e => e.id === id);
+      if (idx < 0) throw new Error(`Element ${id} not found`);
+      const el = b.elements[idx];
+      if (el.locked && allUpdates.locked !== false) throw new Error(`Element ${id} is locked. Pass locked:false to unlock.`);
+      const elements = [...b.elements]; elements[idx] = { ...el, ...allUpdates, id };
       writeBoard({ ...b, elements }); return text(elements[idx]);
     }
     case 'delete_element': {
-      const b = readBoard(); const before = (b.elements || []).length;
+      const b = readBoard();
+      const cascade = args.cascade !== false;
+      const connsBefore = (b.connections || []).length;
+      const connections = (b.connections || []).filter(c => c.id !== args.id);
+      if (connections.length < connsBefore) {
+        writeBoard({ ...b, connections }); return text({ deletedId: args.id, cascadeDeletedIds: [] });
+      }
+      const el = (b.elements || []).find(e => e.id === args.id);
+      if (!el) throw new Error(`Element ${args.id} not found`);
+      if (el.locked) throw new Error(`Element ${args.id} is locked`);
       const elements = (b.elements || []).filter(e => e.id !== args.id);
-      if (elements.length === before) throw new Error(`Element ${args.id} not found`);
-      writeBoard({ ...b, elements }); return text(`Deleted ${args.id}`);
+      let finalConns = b.connections || [];
+      let cascadeDeletedIds = [];
+      if (cascade) {
+        const dangling = finalConns.filter(c => c.from === args.id || c.to === args.id);
+        cascadeDeletedIds = dangling.map(c => c.id);
+        finalConns = finalConns.filter(c => c.from !== args.id && c.to !== args.id);
+      }
+      writeBoard({ ...b, elements, connections: finalConns }); return text({ deletedId: args.id, cascadeDeletedIds });
     }
     case 'push_todo_items': {
       const b = readBoard(); const idx = (b.elements || []).findIndex(e => e.id === args.id);
@@ -1451,6 +1484,28 @@ async function remoteMcpCallTool(name, args, boardFilePath, owner, boardName) {
       items[args.index] = { ...items[args.index], done: args.done };
       const elements = [...b.elements]; elements[idx] = { ...elements[idx], items };
       writeBoard({ ...b, elements }); return text(`Item ${args.index} marked ${args.done ? 'done' : 'undone'}`);
+    }
+    case 'add_arrow': {
+      const b = readBoard();
+      const els = b.elements || [];
+      if (!els.find(e => e.id === args.fromId)) throw new Error(`Source element ${args.fromId} not found`);
+      if (!els.find(e => e.id === args.toId))   throw new Error(`Target element ${args.toId} not found`);
+      let connStyle = args.routing === 'curved' ? 'curve' : 'arrow';
+      if (args.arrowhead === 'none') connStyle = 'line';
+      const fromAnchor = (!args.fromAnchor || args.fromAnchor === 'auto') ? 'center' : args.fromAnchor;
+      const toAnchor   = (!args.toAnchor   || args.toAnchor   === 'auto') ? 'center' : args.toAnchor;
+      const conn = {
+        id: 'el_mcp_' + Math.random().toString(36).slice(2, 10),
+        from: args.fromId, fromAnchor,
+        to: args.toId, toAnchor,
+        style: connStyle,
+        label: args.label || '',
+        ...(args.color ? { color: args.color } : {}),
+        ...(['dashed','dotted'].includes(args.style) ? { lineStyle: args.style } : {}),
+        ...(args.arrowhead === 'both' ? { arrowhead: 'both' } : {}),
+      };
+      writeBoard({ ...b, connections: [...(b.connections || []), conn] });
+      return text(conn);
     }
     default: throw new Error(`Unknown tool: ${name}`);
   }
@@ -1504,7 +1559,7 @@ app.post('/mcp-remote', mcpCors, mcpLimiter, async (req, res) => {
     if (method === 'ping') return ok({});
     if (method === 'tools/list') return ok({ tools: REMOTE_MCP_TOOLS });
     if (method === 'tools/call') {
-      if (entry.readOnly && ['add_element','update_element','delete_element','push_todo_items','set_todo_item_done'].includes(params?.name)) return err(-32003, 'Key is read-only');
+      if (entry.readOnly && ['add_element','add_arrow','update_element','delete_element','push_todo_items','set_todo_item_done'].includes(params?.name)) return err(-32003, 'Key is read-only');
       const result = await remoteMcpCallTool(params.name, params.arguments || {}, boardFilePath, entry.owner, boardName);
       return ok({ content: result.content, isError: false });
     }

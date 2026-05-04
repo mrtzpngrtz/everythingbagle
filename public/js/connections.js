@@ -335,6 +335,17 @@ const Connections = {
     });
     marker.appendChild(polygon);
     defs.appendChild(marker);
+    if (App.connections.some(c => c.arrowhead === 'both')) {
+      const markerStart = Utils.createSVGElement('marker', {
+        id: 'arrowhead-start', markerWidth: 10, markerHeight: 7,
+        refX: 0, refY: 3.5, orient: 'auto-start-reverse',
+      });
+      const polyStart = Utils.createSVGElement('polygon', {
+        points: '0 0, 10 3.5, 0 7', class: 'connection-arrow',
+      });
+      markerStart.appendChild(polyStart);
+      defs.appendChild(markerStart);
+    }
     this.svg.appendChild(defs);
 
     // Draw non-thread connections
@@ -372,6 +383,11 @@ const Connections = {
         App.saveState();
       };
 
+      const _stroke = conn.color || null;
+      const _dash   = conn.lineStyle === 'dashed' ? '8 4' : conn.lineStyle === 'dotted' ? '3 3' : null;
+      const _mEnd   = conn.style !== 'line' ? 'url(#arrowhead)' : '';
+      const _mStart = conn.arrowhead === 'both' ? 'url(#arrowhead-start)' : '';
+
       if (conn.style === 'curve') {
         const dx = Math.abs(x2 - x1) * 0.5;
         const cp1x = conn.fromAnchor === 'right' ? x1 + dx : conn.fromAnchor === 'left' ? x1 - dx : x1;
@@ -386,8 +402,10 @@ const Connections = {
         this.svg.appendChild(hitPath);
         const path = Utils.createSVGElement('path', {
           d: pathD, class: 'connection-line',
-          'marker-end': 'url(#arrowhead)', 'data-connection-id': conn.id,
+          'marker-end': _mEnd, 'marker-start': _mStart, 'data-connection-id': conn.id,
         });
+        if (_stroke) path.setAttribute('stroke', _stroke);
+        if (_dash)   path.setAttribute('stroke-dasharray', _dash);
         path.style.pointerEvents = 'none';
         this.svg.appendChild(path);
       } else {
@@ -398,9 +416,11 @@ const Connections = {
         this.svg.appendChild(hitLine);
         const line = Utils.createSVGElement('line', {
           x1, y1, x2, y2, class: 'connection-line',
-          'marker-end': conn.style === 'arrow' ? 'url(#arrowhead)' : '',
+          'marker-end': _mEnd, 'marker-start': _mStart,
           'data-connection-id': conn.id,
         });
+        if (_stroke) line.setAttribute('stroke', _stroke);
+        if (_dash)   line.setAttribute('stroke-dasharray', _dash);
         line.style.pointerEvents = 'none';
         this.svg.appendChild(line);
       }
