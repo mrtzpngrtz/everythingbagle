@@ -8,9 +8,9 @@
 
 :root {
   --white: #FFFFFF;
-  --off-white: #F2F2F2;
-  --light-grey: #E8E8E8;
-  --mid-grey: #CCCCCC;
+  --off-white: #F6F6F6;
+  --light-grey: #EBEBEB;
+  --mid-grey: #D4D4D4;
   --dark-grey: #999999;
   --charcoal: #555555;
   --near-black: #222222;
@@ -22,8 +22,8 @@
   --font-mono: 'Roboto Mono', 'Courier New', Courier, monospace;
   --font-display: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 
-  --topbar-h: 40px;
-  --border: 0.5px solid var(--black);
+  --topbar-h: 34px;
+  --border: 0.5px solid var(--mid-grey);
   --border-light: 0.5px solid var(--light-grey);
   --border-mid: 0.5px solid var(--mid-grey);
 }
@@ -68,8 +68,8 @@ html, body {
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 16px;
+  gap: 6px;
+  padding: 0 12px;
 }
 
 .topbar-left { flex: 1; }
@@ -269,7 +269,7 @@ body.dark .profile-section-divider { color: #888; }
 #filter-panel {
   position: fixed;
   top: var(--topbar-h);
-  left: 44px;
+  left: 38px;
   z-index: 800;
   background: var(--white);
   border-right: var(--border);
@@ -693,7 +693,7 @@ body.dark .board-dropdown-item .board-name {
   border-right: var(--border);
   display: flex;
   flex-direction: column;
-  width: 44px;
+  width: 38px;
   user-select: none;
 }
 
@@ -735,13 +735,13 @@ body.dark .board-dropdown-item .board-name {
 
 .toolbar-divider {
   height: 1px;
-  background: var(--black);
+  background: var(--light-grey);
   width: 100%;
 }
 
 .tool-btn {
-  width: 44px;
-  height: 34px;
+  width: 38px;
+  height: 30px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -816,7 +816,7 @@ body.dark .board-dropdown-item .board-name {
 #canvas-container {
   position: fixed;
   top: var(--topbar-h);
-  left: 44px; right: 0; bottom: 0;
+  left: 38px; right: 0; bottom: 0;
   overflow: hidden;
   cursor: default;
   background: var(--off-white);
