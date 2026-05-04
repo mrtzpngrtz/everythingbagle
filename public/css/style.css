@@ -365,11 +365,6 @@ body.flow-mode #canvas-container {
   left: 0;
 }
 
-@keyframes flow-exit-idle {
-  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(0,0,0,0.25); }
-  60%  { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(0,0,0,0); }
-  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(0,0,0,0); }
-}
 
 #flow-exit-btn {
   display: block;
@@ -394,12 +389,24 @@ body.flow-mode #canvas-container {
   opacity: 1;
   background: var(--black);
   color: var(--white);
-  animation: none;
+}
+
+@keyframes flow-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(0,0,0,0.3); }
+  70%  { box-shadow: 0 0 0 8px rgba(0,0,0,0); }
+  100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
 }
 
 body.flow-mode #flow-exit-btn {
   opacity: 1;
-  animation: flow-exit-idle 3s ease-in-out 4s infinite;
+  animation: flow-ring 2s ease-out 3s infinite;
+}
+
+body.dark #flow-exit-btn { animation-name: flow-ring-dark; }
+@keyframes flow-ring-dark {
+  0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.3); }
+  70%  { box-shadow: 0 0 0 8px rgba(255,255,255,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
 }
 
 body.dark #flow-exit-btn {
