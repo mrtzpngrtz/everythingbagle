@@ -265,6 +265,24 @@ body.dark .profile-section-divider { color: #888; }
   border-color: var(--accent);
 }
 
+/* Flow mode button — round doughnut */
+.btn-flowmode-ring {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 3px solid var(--black) !important;
+  background: transparent !important;
+  flex-shrink: 0;
+}
+.btn-flowmode-ring:hover {
+  background: var(--black) !important;
+}
+body.flow-mode .btn-flowmode-ring {
+  background: var(--black) !important;
+}
+
 /* === FILTER PANEL (floating) === */
 #filter-panel {
   position: fixed;
