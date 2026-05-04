@@ -389,7 +389,7 @@ body.flow-mode #canvas-container {
 }
 
 #flow-exit-btn {
-  display: none;
+  display: block;
   position: fixed;
   bottom: 20px;
   left: 20px;
@@ -413,7 +413,8 @@ body.flow-mode #canvas-container {
 }
 
 body.flow-mode #flow-exit-btn {
-  display: block;
+  opacity: 0.5;
+  animation: flow-exit-idle 3s ease-in-out 4s infinite;
 }
 
 body.dark #flow-exit-btn {
