@@ -31,7 +31,7 @@ const Canvas = {
     // Wheel zoom
     this.container.addEventListener('wheel', (e) => {
       // Let scroll pass through to scrollable inner elements
-      const scrollable = e.target.closest('.el-text--boxed, .todo-items, .cal-agenda');
+      const scrollable = e.target.closest('.el-text--boxed, .todo-items, .cal-agenda, .llm-messages');
       if (scrollable) {
         scrollable.scrollTop += e.deltaY;
         e.preventDefault();
