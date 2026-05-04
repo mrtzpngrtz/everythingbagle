@@ -135,13 +135,14 @@ const App = {
   },
 
   initFlowMode() {
-    const btn = document.getElementById('btn-flowmode');
-    if (!btn) return;
+    const btn     = document.getElementById('btn-flowmode');
+    const exitBtn = document.getElementById('flow-exit-btn');
     const toggle = () => {
       document.body.classList.toggle('flow-mode');
-      btn.style.opacity = document.body.classList.contains('flow-mode') ? '0.4' : '';
+      if (btn) btn.style.opacity = document.body.classList.contains('flow-mode') ? '0.4' : '';
     };
-    btn.addEventListener('click', toggle);
+    if (btn)     btn.addEventListener('click', toggle);
+    if (exitBtn) exitBtn.addEventListener('click', toggle);
   },
 
   /** Swap hardcoded black/white colors on elements when toggling dark mode */
