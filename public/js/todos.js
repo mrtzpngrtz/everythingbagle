@@ -141,10 +141,10 @@ const Todos = {
         if (!e.target.closest('.todo-drag') && e.target !== itemEl) {
           e.preventDefault(); return;
         }
-        this._dragging = { fromIdx: parseInt(itemEl.dataset.todoIdx) };
+        this._dragging = { fromIdx: parseInt(itemEl.dataset.todoIdx), fromId: data.id };
         itemEl.classList.add('todo-dragging');
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', itemEl.dataset.todoIdx);
+        e.dataTransfer.setData('text/plain', `${data.id}:${itemEl.dataset.todoIdx}`);
         e.stopPropagation();
       });
 
@@ -166,22 +166,60 @@ const Todos = {
       itemEl.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        itemEl.classList.remove('todo-drag-over');
+        container.querySelectorAll('.todo-item').forEach(i => i.classList.remove('todo-drag-over'));
         if (!this._dragging) return;
-        const fromIdx = this._dragging.fromIdx;
-        const toIdx   = parseInt(itemEl.dataset.todoIdx);
-        if (fromIdx === toIdx) return;
+        const { fromIdx, fromId } = this._dragging;
+        const toIdx = parseInt(itemEl.dataset.todoIdx);
 
-        const items = data.items;
-        const [moved] = items.splice(fromIdx, 1);
-        items.splice(toIdx, 0, moved);
-        this.refresh(el, data);
+        if (fromId === data.id) {
+          // Same-list reorder
+          if (fromIdx === toIdx) return;
+          const [moved] = data.items.splice(fromIdx, 1);
+          data.items.splice(toIdx, 0, moved);
+          this.refresh(el, data);
+        } else {
+          // Cross-list move
+          const srcData = App.elements.find(e => e.id === fromId);
+          if (!srcData) return;
+          const [moved] = srcData.items.splice(fromIdx, 1);
+          data.items.splice(toIdx, 0, moved);
+          const srcEl = document.querySelector(`.canvas-element[data-id="${fromId}"]`);
+          if (srcEl) this.refresh(srcEl, srcData);
+          this.refresh(el, data);
+        }
         App.saveState();
       });
     });
 
-    // Allow drop on the container itself (end of list)
-    container.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+    // Drop on container = append to end of list (handles cross-list too)
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (this._dragging && this._dragging.fromId !== data.id) {
+        container.classList.add('todo-drag-over-container');
+      }
+    });
+    container.addEventListener('dragleave', (e) => {
+      if (!container.contains(e.relatedTarget)) {
+        container.classList.remove('todo-drag-over-container');
+      }
+    });
+    container.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      container.classList.remove('todo-drag-over-container');
+      if (!this._dragging || this._dragging.fromId === data.id) return;
+      // Cross-list drop on empty area = append
+      const { fromIdx, fromId } = this._dragging;
+      const srcData = App.elements.find(e => e.id === fromId);
+      if (!srcData) return;
+      const [moved] = srcData.items.splice(fromIdx, 1);
+      data.items.push(moved);
+      const srcEl = document.querySelector(`.canvas-element[data-id="${fromId}"]`);
+      if (srcEl) this.refresh(srcEl, srcData);
+      this.refresh(el, data);
+      App.saveState();
+    });
   },
 
   /** Refresh the todo element DOM */

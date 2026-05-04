@@ -2782,6 +2782,7 @@ body.dark #suggestion-submit:hover {
 .todo-drag:hover { opacity: 0.6; }
 .todo-item.todo-dragging { opacity: 0.4; }
 .todo-item.todo-drag-over { background: var(--off-white); outline: 1px dashed var(--accent); }
+.todo-items.todo-drag-over-container { outline: 2px dashed var(--accent); outline-offset: -2px; background: rgba(var(--accent-rgb, 255,69,0), 0.04); }
 
 /* Star / important button */
 .todo-star {
