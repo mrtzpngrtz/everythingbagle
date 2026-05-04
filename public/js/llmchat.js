@@ -13,8 +13,8 @@ const LLMChat = {
       </div>
       <div class="llm-messages">${messagesHtml}</div>
       <div class="llm-input-row">
-        <textarea class="llm-input" placeholder="Message… (Ctrl+Enter to send)" rows="2"></textarea>
-        <button class="llm-send" title="Send (Ctrl+Enter)">↑</button>
+        <textarea class="llm-input" placeholder="Message… (Shift+Enter for newline)" rows="2"></textarea>
+        <button class="llm-send" title="Send (Enter)">↑</button>
       </div>
       <div class="llm-status"></div>`;
   },
@@ -78,7 +78,7 @@ const LLMChat = {
 
     sendBtn.addEventListener('click', (e) => { e.stopPropagation(); send(); });
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
 
     // Rename on dblclick of title
