@@ -53,6 +53,9 @@ const Toolbar = {
   initKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.closest('[contenteditable]')) return;
+      // Let browser handle copy/cut when text is selected inside chat bubbles
+      const _sel = window.getSelection();
+      if (_sel?.rangeCount && _sel.toString() && _sel.anchorNode?.parentElement?.closest('.llm-messages')) return;
 
       const key = e.key.toLowerCase();
 
