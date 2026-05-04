@@ -265,23 +265,6 @@ body.dark .profile-section-divider { color: #888; }
   border-color: var(--accent);
 }
 
-/* Flow mode button — round doughnut */
-.btn-flowmode-ring {
-  width: 16px !important;
-  height: 16px !important;
-  min-width: 0 !important;
-  padding: 0 !important;
-  border-radius: 50% !important;
-  border: 3px solid var(--black) !important;
-  background: transparent !important;
-  flex-shrink: 0;
-}
-.btn-flowmode-ring:hover {
-  background: var(--black) !important;
-}
-body.flow-mode .btn-flowmode-ring {
-  background: var(--black) !important;
-}
 
 /* === FILTER PANEL (floating) === */
 #filter-panel {
@@ -394,34 +377,39 @@ body.flow-mode #canvas-container {
   bottom: 20px;
   left: 20px;
   z-index: 9999;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 3px solid var(--black);
-  background: transparent;
+  background: var(--white);
+  color: var(--black);
+  border: 0.5px solid var(--mid-grey);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  padding: 4px 8px;
   cursor: pointer;
-  padding: 0;
-  opacity: 0.25;
-  transition: opacity 0.2s, background 0.2s;
-  animation: flow-exit-idle 3s ease-in-out 4s infinite;
+  opacity: 0.5;
+  transition: opacity 0.2s, background 0.2s, color 0.2s;
 }
 
 #flow-exit-btn:hover {
   opacity: 1;
   background: var(--black);
+  color: var(--white);
   animation: none;
 }
 
 body.flow-mode #flow-exit-btn {
-  opacity: 0.5;
+  opacity: 1;
   animation: flow-exit-idle 3s ease-in-out 4s infinite;
 }
 
 body.dark #flow-exit-btn {
-  border-color: #E0E0E0;
+  background: #1a1a1a;
+  color: #E0E0E0;
+  border-color: #444;
 }
 body.dark #flow-exit-btn:hover {
   background: #E0E0E0;
+  color: #111;
 }
 
 #btn-admin {

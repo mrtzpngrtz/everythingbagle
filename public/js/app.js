@@ -135,13 +135,8 @@ const App = {
   },
 
   initFlowMode() {
-    const btn     = document.getElementById('btn-flowmode');
     const exitBtn = document.getElementById('flow-exit-btn');
-    const toggle = () => {
-      document.body.classList.toggle('flow-mode');
-      if (btn) btn.style.opacity = document.body.classList.contains('flow-mode') ? '0.4' : '';
-    };
-    if (btn)     btn.addEventListener('click', toggle);
+    const toggle = () => document.body.classList.toggle('flow-mode');
     if (exitBtn) exitBtn.addEventListener('click', toggle);
   },
 
