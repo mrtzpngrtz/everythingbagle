@@ -497,6 +497,8 @@ const Storage = {
 
       App.elements = data.elements || [];
       App.connections = data.connections || [];
+      // Adapt stored colors to current dark/light mode on load
+      App.swapElementColors(false, document.body.classList.contains('dark'));
       this.currentBoard = name;
       this.updateBoardName();
 

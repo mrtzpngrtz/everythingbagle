@@ -30,6 +30,7 @@ const App = {
 
     // Dark mode (apply before board renders)
     this.initDarkMode();
+    this.initFlowMode();
 
     // Load board from URL params — redirect home if missing
     const params = new URLSearchParams(window.location.search);
@@ -131,6 +132,16 @@ const App = {
       Connections.render();
       Canvas.updateMinimap();
     });
+  },
+
+  initFlowMode() {
+    const btn = document.getElementById('btn-flowmode');
+    if (!btn) return;
+    const toggle = () => {
+      document.body.classList.toggle('flow-mode');
+      btn.style.opacity = document.body.classList.contains('flow-mode') ? '0.4' : '';
+    };
+    btn.addEventListener('click', toggle);
   },
 
   /** Swap hardcoded black/white colors on elements when toggling dark mode */
