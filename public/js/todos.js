@@ -145,6 +145,9 @@ const Todos = {
         itemEl.classList.add('todo-dragging');
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', `${data.id}:${itemEl.dataset.todoIdx}`);
+        // Cancel any canvas drag that started from the same mousedown
+        Elements.dragging = false;
+        Elements.dragStart = null;
         e.stopPropagation();
       });
 
