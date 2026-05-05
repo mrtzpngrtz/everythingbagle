@@ -381,16 +381,12 @@ body.flow-mode #canvas-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  position: fixed;
-  bottom: 20px;
-  left: 48px;
-  z-index: 9999;
+  gap: 3px;
   background: none;
   border: none;
-  padding: 0;
+  padding: 0 6px;
   cursor: pointer;
-  opacity: 0.3;
+  opacity: 0.4;
   transition: opacity 0.2s;
 }
 #flow-exit-btn::before {
@@ -417,7 +413,7 @@ body.flow-mode #canvas-container {
 }
 
 body.flow-mode #flow-exit-btn {
-  opacity: 0.7;
+  opacity: 1;
 }
 body.flow-mode #flow-exit-btn::before {
   animation: flow-ring 1.8s ease-out infinite;
