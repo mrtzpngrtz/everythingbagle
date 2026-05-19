@@ -1244,6 +1244,14 @@ const Elements = {
       }
     });
 
+    container.addEventListener('click', (e) => {
+      if (!e.target.closest('.file-play')) return;
+      const elementDom = e.target.closest('.canvas-element');
+      if (!elementDom) return;
+      const data = this.getData(elementDom.dataset.id);
+      if (data?.url) FileViewer.open(data);
+    });
+
     container.addEventListener('dblclick', (e) => {
       const elementDom = e.target.closest('.canvas-element');
       if (!elementDom) return;
