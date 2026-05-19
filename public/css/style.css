@@ -378,13 +378,17 @@ body.flow-mode #canvas-container {
 }
 
 #flow-exit-btn {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
   background: none;
   border: none;
-  padding: 0 6px;
+  padding: 6px;
   cursor: pointer;
   opacity: 0.4;
   transition: opacity 0.2s;

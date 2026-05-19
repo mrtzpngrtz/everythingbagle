@@ -380,7 +380,7 @@ app.use('/css', express.static(path.join(__dirname, 'public/css')));
 app.use('/js', express.static(path.join(__dirname, 'public/js')));
 app.get('/favicon.svg', (req, res) => res.sendFile(path.join(__dirname, 'public', 'favicon.svg')));
 app.use('/uploads', (req, res, next) => {
-  if (!req.session?.user) return res.status(401).send('Unauthorized');
+  if (!req.session?.user && !req.session?.shareToken) return res.status(401).send('Unauthorized');
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
@@ -2037,6 +2037,8 @@ app.post('/api/share/:token', (req, res) => {
       return res.status(401).json({ error: 'Wrong password', needsPassword: true });
     }
   }
+
+  req.session.shareToken = token;
 
   // Strip sensitive fields from meta
   const { sharePasswordHash, shareToken, ...safeMeta } = found.meta || {};
