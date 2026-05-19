@@ -21,6 +21,7 @@ const Share = {
     Canvas.init();
     Elements.init(); // READ_ONLY=true, so bindCanvasEvents is skipped
     Connections.init();
+    FileViewer.init();
 
     await this.loadBoard(null);
   },

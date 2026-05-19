@@ -206,7 +206,7 @@
     const ContextMenu = { init() {}, show() {}, hide() {} };
     const DrawOptions = { init() {}, toggle() {}, _syncUI() {} };
     const IconPicker = { init() {}, show() {} };
-    const FileViewer = { init() {}, open() {}, openImage() {} };
+    // FileViewer loaded via viewer.js below
     const Suggestions = { init() {} };
     const DragDrop = { init() {} };
   </script>
@@ -220,6 +220,23 @@
   <script src="/js/calendar.js"></script>
   <script src="/js/elements.js"></script>
   <script src="/js/connections.js"></script>
+  <script src="/js/viewer.js"></script>
   <script src="/js/share.js"></script>
+
+  <!-- File Viewer Modal -->
+  <div id="file-viewer" class="modal hidden">
+    <div class="modal-content file-viewer-content">
+      <div class="modal-header">
+        <span class="modal-idx">◻</span>
+        <span id="file-viewer-title" class="file-viewer-title"></span>
+        <div class="file-viewer-actions">
+          <a id="file-viewer-download" class="topbar-btn" download title="Download file">↓ DOWNLOAD</a>
+          <a id="file-viewer-open" class="topbar-btn" target="_blank" title="Open in new tab">↗ VIEW</a>
+          <button class="modal-close" id="file-viewer-close">✕</button>
+        </div>
+      </div>
+      <div class="file-viewer-body" id="file-viewer-body"></div>
+    </div>
+  </div>
 </body>
 </html>
