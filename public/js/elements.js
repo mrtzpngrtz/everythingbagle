@@ -27,6 +27,28 @@ const Elements = {
 
   init() {
     if (!App.READ_ONLY) this.bindCanvasEvents();
+    this.bindViewerEvents();
+  },
+
+  bindViewerEvents() {
+    const container = Canvas.container;
+    container.addEventListener('click', (e) => {
+      if (!e.target.closest('.file-play')) return;
+      const elementDom = e.target.closest('.canvas-element');
+      if (!elementDom) return;
+      const data = this.getData(elementDom.dataset.id);
+      if (data?.url) FileViewer.open(data);
+    });
+    container.addEventListener('dblclick', (e) => {
+      if (App.READ_ONLY) {
+        const elementDom = e.target.closest('.canvas-element');
+        if (!elementDom) return;
+        const data = this.getData(elementDom.dataset.id);
+        if (!data) return;
+        if (data.type === 'file' && data.url) FileViewer.open(data);
+        if (data.type === 'image' && data.url) FileViewer.openImage(data.url, data.originalName || 'image');
+      }
+    });
   },
 
   create(type, x, y, extra = {}) {
@@ -1242,14 +1264,6 @@ const Elements = {
         drawingStart = null;
         App.setTool('select');
       }
-    });
-
-    container.addEventListener('click', (e) => {
-      if (!e.target.closest('.file-play')) return;
-      const elementDom = e.target.closest('.canvas-element');
-      if (!elementDom) return;
-      const data = this.getData(elementDom.dataset.id);
-      if (data?.url) FileViewer.open(data);
     });
 
     container.addEventListener('dblclick', (e) => {
