@@ -4384,13 +4384,13 @@ body.dark .cal-day-bar { background: #E8E8E8; }
 /* === INFO MODAL === */
 #btn-info {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 16px;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--black);
   opacity: 0.5;
-  padding: 0 4px;
+  padding: 0 6px;
   line-height: 1;
   transition: opacity 0.15s;
 }
