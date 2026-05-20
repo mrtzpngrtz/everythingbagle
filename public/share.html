@@ -126,6 +126,7 @@
     <div class="topbar-left">
       <span class="brand-mark">●</span>
       <span class="brand-name">EVERTHINGBAGLE</span>
+      <button id="btn-info" title="About">ⓘ</button>
       <span class="topbar-separator"></span>
       <span id="share-board-title">—</span>
     </div>
@@ -238,5 +239,33 @@
       <div class="file-viewer-body" id="file-viewer-body"></div>
     </div>
   </div>
+
+  <div id="info-modal" class="hidden">
+    <div class="info-modal-box">
+      <button class="info-modal-close" id="info-modal-close">✕</button>
+      <div class="info-modal-logo">● EVERTHINGBAGLE</div>
+      <div class="info-modal-desc">Open source knowledge management tool — run locally or self-hosted. Organize ideas on an infinite canvas with nodes, threads, and AI assistance.</div>
+      <div class="info-modal-tags">
+        <span class="info-modal-tag">NODES</span>
+        <span class="info-modal-tag">AI</span>
+        <span class="info-modal-tag">CALENDAR</span>
+        <span class="info-modal-tag">MCP</span>
+        <span class="info-modal-tag">OPEN SOURCE</span>
+      </div>
+      <div class="info-modal-links">
+        <a href="https://moritzpongratz.com" target="_blank" rel="noopener">moritzpongratz.com</a>
+        <a href="https://aop.studio" target="_blank" rel="noopener">aop.studio</a>
+        <a href="https://github.com/mrtzpngrtz/everythingbagle" target="_blank" rel="noopener">github.com/mrtzpngrtz/everythingbagle</a>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function() {
+      const modal = document.getElementById('info-modal');
+      document.getElementById('btn-info').addEventListener('click', () => modal.classList.remove('hidden'));
+      document.getElementById('info-modal-close').addEventListener('click', () => modal.classList.add('hidden'));
+      modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+    })();
+  </script>
 </body>
 </html>
