@@ -24,6 +24,21 @@
     });
   }
 
+  function openBoardSheet() {
+    var container = document.getElementById('mobile-board-list');
+    if (!container) return;
+    container.innerHTML = '<div style="color:var(--dark-grey);font-family:var(--font-mono);font-size:10px;padding:10px;">Loading...</div>';
+    openSheet('mobile-board-sheet');
+    if (typeof Storage !== 'undefined') {
+      Storage.loadBoardList(container, true);
+      // Close sheet after board is selected
+      container.addEventListener('click', function onPick() {
+        closeSheet('mobile-board-sheet');
+        container.removeEventListener('click', onPick);
+      });
+    }
+  }
+
   function init() {
     applyMobileMode();
     window.addEventListener('resize', applyMobileMode);
@@ -89,8 +104,7 @@
           var dmBtn = document.getElementById('btn-darkmode');
           if (dmBtn) dmBtn.click();
         } else if (action === 'boards') {
-          var swBtn = document.getElementById('board-switcher-btn');
-          if (swBtn) swBtn.click();
+          openBoardSheet();
         } else if (action === 'share') {
           var shareBtn = document.getElementById('btn-share');
           if (shareBtn) shareBtn.click();
