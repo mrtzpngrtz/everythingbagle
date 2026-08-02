@@ -847,9 +847,15 @@ const Storage = {
     });
   },
 
-  async _embedFiles(elements) {
-    await Promise.all(elements.map(async el => {
-      if ((el.type === 'image' || el.type === 'file') && el.url && el.url.startsWith('/uploads/')) {
+  async _embedFiles(elements, onProgress) {
+    const targets = elements.filter(el =>
+      (el.type === 'image' || el.type === 'file') && el.url && el.url.startsWith('/uploads/'));
+    let done = 0;
+
+    // Batched instead of all-at-once: boards with many uploads would otherwise
+    // open hundreds of parallel fetches and hold every decoded file at peak.
+    for (let i = 0; i < targets.length; i += 4) {
+      await Promise.all(targets.slice(i, i + 4).map(async el => {
         try {
           const res = await fetch(el.url);
           const blob = await res.blob();
@@ -862,8 +868,34 @@ const Storage = {
         } catch (err) {
           console.warn('Could not embed file:', el.url, err);
         }
+        done++;
+        if (onProgress) onProgress(done, targets.length);
+      }));
+    }
+  },
+
+  // Serialises a board into Blob parts rather than one string. A single
+  // JSON.stringify() of a board with embedded files can exceed the engine's
+  // max string length (~512MB in V8) and throws RangeError.
+  _boardToBlob(out) {
+    const parts = ['{"elements":['];
+    out.elements.forEach((el, i) => {
+      if (i) parts.push(',');
+      const embedded = el._embedded;
+      if (embedded === undefined) {
+        parts.push(JSON.stringify(el));
+      } else {
+        const rest = { ...el };
+        delete rest._embedded;
+        const head = JSON.stringify(rest);
+        parts.push(head === '{}' ? '{"_embedded":' : head.slice(0, -1) + ',"_embedded":');
+        parts.push(JSON.stringify(embedded));
+        parts.push('}');
       }
-    }));
+    });
+    parts.push('],"connections":', JSON.stringify(out.connections));
+    parts.push(',"viewport":', JSON.stringify(out.viewport), '}');
+    return new Blob(parts, { type: 'application/json' });
   },
 
   async _reuploadEmbedded(elements) {
@@ -892,10 +924,13 @@ const Storage = {
       const url = this.getBoardApiPath(name, owner);
       const res = await fetch(url);
       const data = await res.json();
-      const elements = JSON.parse(JSON.stringify(data.elements || []));
-      await this._embedFiles(elements);
+      const elements = (data.elements || []).map(el => ({ ...el }));
+      await this._embedFiles(elements, (done, total) => {
+        if (btn && total > 1) btn.textContent = `${done}/${total}`;
+      });
+      if (btn) btn.textContent = '…';
       const out = { elements, connections: data.connections || [], viewport: data.viewport || {} };
-      const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+      const blob = this._boardToBlob(out);
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
@@ -903,7 +938,8 @@ const Storage = {
       const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
       a.download = `${name}_${ts}.json`;
       a.click();
-      URL.revokeObjectURL(blobUrl);
+      // Revoking immediately can abort the download of a large blob.
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } finally {
       if (btn) { btn.textContent = orig; btn.disabled = false; }
     }
