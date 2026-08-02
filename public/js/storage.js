@@ -874,10 +874,10 @@ const Storage = {
     }
   },
 
-  // Serialises a board into Blob parts rather than one string. A single
+  // Serialises a board into JSON chunks rather than one string. A single
   // JSON.stringify() of a board with embedded files can exceed the engine's
   // max string length (~512MB in V8) and throws RangeError.
-  _boardToBlob(out) {
+  _boardJsonParts(out) {
     const parts = ['{"elements":['];
     out.elements.forEach((el, i) => {
       if (i) parts.push(',');
@@ -895,30 +895,102 @@ const Storage = {
     });
     parts.push('],"connections":', JSON.stringify(out.connections));
     parts.push(',"viewport":', JSON.stringify(out.viewport), '}');
-    return new Blob(parts, { type: 'application/json' });
+    return parts;
   },
 
-  async _reuploadEmbedded(elements) {
-    await Promise.all(elements.map(async el => {
-      if (el._embedded) {
+  // Writes straight to the chosen file, so nothing bigger than one chunk is ever
+  // held in memory. A blob download of a multi-hundred-MB board can be silently
+  // truncated by the browser's blob storage limits.
+  async _writeParts(handle, parts) {
+    const writable = await handle.createWritable();
+    try {
+      let buf = '';
+      for (const part of parts) {
+        buf += part;
+        if (buf.length >= 4 * 1024 * 1024) { await writable.write(buf); buf = ''; }
+      }
+      if (buf) await writable.write(buf);
+    } finally {
+      await writable.close();
+    }
+  },
+
+  _downloadViaBlob(parts, filename) {
+    const blob = new Blob(parts, { type: 'application/json' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    a.click();
+    // Revoking while the browser is still writing truncates the file — hold the
+    // URL until the page goes away instead of guessing at a timeout.
+    window.addEventListener('pagehide', () => URL.revokeObjectURL(blobUrl), { once: true });
+    return blob.size;
+  },
+
+  async _uploadEmbedded(el) {
+    const res = await fetch(el._embedded);
+    const blob = await res.blob();
+    const formData = new FormData();
+    formData.append('file', blob, el.originalName || `file_${el.id}`);
+
+    // The server rate-limits uploads (30/min) — a board with more files than that
+    // would otherwise lose every attachment past the limit.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+      if (uploadRes.status === 429) {
+        await new Promise(r => setTimeout(r, 15000));
+        continue;
+      }
+      if (!uploadRes.ok) throw new Error(`upload failed (${uploadRes.status})`);
+      const uploadData = await uploadRes.json();
+      if (uploadData.url) el.url = uploadData.url;
+      return;
+    }
+    throw new Error('upload rate limit');
+  },
+
+  async _reuploadEmbedded(elements, onProgress) {
+    const targets = elements.filter(el => el._embedded);
+    let done = 0, failed = 0;
+
+    for (let i = 0; i < targets.length; i += 3) {
+      await Promise.all(targets.slice(i, i + 3).map(async el => {
         try {
-          const res = await fetch(el._embedded);
-          const blob = await res.blob();
-          const formData = new FormData();
-          formData.append('file', blob, el.originalName || `file_${el.id}`);
-          const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-          const uploadData = await uploadRes.json();
-          if (uploadData.url) el.url = uploadData.url;
+          await this._uploadEmbedded(el);
         } catch (err) {
-          console.warn('Could not re-upload embedded file:', err);
+          failed++;
+          console.warn('Could not re-upload embedded file:', el.originalName, err);
         }
         delete el._embedded;
-      }
-    }));
+        done++;
+        if (onProgress) onProgress(done, targets.length);
+      }));
+    }
+    return { total: targets.length, failed };
   },
 
   async downloadBoardByName(name, owner, btn) {
     const orig = btn ? btn.textContent : null;
+    const now = new Date();
+    const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
+    const filename = `${name}_${ts}.json`;
+
+    // Ask for the target file first — the picker needs the click's user gesture,
+    // which is gone by the time the board and its files are fetched.
+    let handle = null;
+    if (window.showSaveFilePicker) {
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'Board JSON', accept: { 'application/json': ['.json'] } }],
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        handle = null; // picker unavailable (e.g. cross-origin frame) → blob fallback
+      }
+    }
+
     if (btn) { btn.textContent = '…'; btn.disabled = true; }
     try {
       const url = this.getBoardApiPath(name, owner);
@@ -930,16 +1002,16 @@ const Storage = {
       });
       if (btn) btn.textContent = '…';
       const out = { elements, connections: data.connections || [], viewport: data.viewport || {} };
-      const blob = this._boardToBlob(out);
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      const now = new Date();
-      const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
-      a.download = `${name}_${ts}.json`;
-      a.click();
-      // Revoking immediately can abort the download of a large blob.
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      const parts = this._boardJsonParts(out);
+      const size = parts.reduce((n, p) => n + p.length, 0);
+
+      if (handle) await this._writeParts(handle, parts);
+      else this._downloadViaBlob(parts, filename);
+
+      Utils.toast(`Exported ${name} · ${Utils.formatFileSize(size)}`);
+    } catch (err) {
+      console.error('Board export failed:', err);
+      await Dialog.alert('Export failed: ' + err.message, 'ERROR');
     } finally {
       if (btn) { btn.textContent = orig; btn.disabled = false; }
     }
@@ -948,10 +1020,19 @@ const Storage = {
   async importBoardFromJson(file) {
     let data;
     try {
-      data = JSON.parse(await file.text());
+      const text = await file.text();
+      // A cut-off export parses as "Unexpected end of JSON input" — say so plainly
+      // instead of blaming the format.
+      if (!text.trimEnd().endsWith('}')) {
+        throw new Error(`file is incomplete (${Utils.formatFileSize(file.size)}) — the download was cut off, export it again`);
+      }
+      data = JSON.parse(text);
       if (!Array.isArray(data.elements)) throw new Error('Missing elements array');
     } catch (err) {
-      await Dialog.alert('Invalid board file: ' + err.message, 'ERROR');
+      const msg = err instanceof RangeError
+        ? `file is too large to read in the browser (${Utils.formatFileSize(file.size)})`
+        : err.message;
+      await Dialog.alert('Invalid board file: ' + msg, 'ERROR');
       return;
     }
 
@@ -961,9 +1042,11 @@ const Storage = {
     const cleanName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
 
     const elements = data.elements;
-    await this._reuploadEmbedded(elements);
+    const result = await this._reuploadEmbedded(elements, (done, total) => {
+      if (total > 1) Utils.toast(`Restoring files ${done}/${total}`, 1200);
+    });
 
-    await fetch(`/api/boards/${encodeURIComponent(cleanName)}`, {
+    const saveRes = await fetch(`/api/boards/${encodeURIComponent(cleanName)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -972,6 +1055,14 @@ const Storage = {
         viewport: data.viewport || { panX: 0, panY: 0, zoom: 1 },
       }),
     });
+
+    if (!saveRes.ok) {
+      await Dialog.alert(`Could not save board (${saveRes.status})`, 'ERROR');
+      return;
+    }
+    if (result.failed) {
+      await Dialog.alert(`Imported, but ${result.failed} of ${result.total} files could not be restored.`, 'WARNING');
+    }
 
     this.refreshDashboard();
   },
