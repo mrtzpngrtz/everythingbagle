@@ -13,7 +13,7 @@ const Properties = {
     // Position popup next to the element
     this.positionPopup(data);
 
-    const ratioLocked = !!data.lockedRatio;
+    const ratioLocked = Elements.isRatioLocked(data);
     const ratioPresets = [['1:1', 1], ['4:3', 4/3], ['3:2', 3/2], ['16:9', 16/9]];
     let html = `
       <div class="prop-group">
@@ -237,7 +237,7 @@ const Properties = {
               height: origData._origH * val / 100,
             });
           }
-        } else if ((prop === 'width' || prop === 'height') && Elements.getData(data.id)?.lockedRatio) {
+        } else if ((prop === 'width' || prop === 'height') && Elements.isRatioLocked(Elements.getData(data.id))) {
           const current = Elements.getData(data.id);
           const ratio = current.width / current.height;
           if (prop === 'width') {
@@ -274,7 +274,7 @@ const Properties = {
     if (ratioLockBtn) {
       ratioLockBtn.addEventListener('click', () => {
         const current = Elements.getData(data.id);
-        Elements.updateElement(data.id, { lockedRatio: !current.lockedRatio });
+        Elements.updateElement(data.id, { lockedRatio: !Elements.isRatioLocked(current) });
         this.show(Elements.getData(data.id));
         App.saveState();
       });

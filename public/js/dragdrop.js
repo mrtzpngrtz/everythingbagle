@@ -138,9 +138,14 @@ const DragDrop = {
     const toast = this._showToast(file.name);
     try {
       // Extract video thumbnail from local file before upload (instant)
-      let thumbnailUrl = null;
+      let thumbnailUrl = null, videoW = 0, videoH = 0;
       if (file.type.startsWith('video/')) {
-        thumbnailUrl = await Utils.extractVideoThumbnail(file);
+        const thumb = await Utils.extractVideoThumbnail(file);
+        if (thumb) {
+          thumbnailUrl = thumb.url;
+          videoW = thumb.width;
+          videoH = thumb.height;
+        }
       }
 
       const result = await Utils.uploadFile(file, pct => toast.update(pct));
@@ -151,21 +156,27 @@ const DragDrop = {
         img.src = result.url;
         await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
         const maxW = 400;
-        const ratio = img.naturalWidth / img.naturalHeight;
-        const width = Math.min(img.naturalWidth, maxW);
-        const height = width / ratio;
+        const ratio = (img.naturalWidth / img.naturalHeight) || 1;
+        const width = Math.round(Math.min(img.naturalWidth || maxW, maxW));
+        const height = Math.round(width / ratio);
         const data = Elements.create('image', x, y, { url: result.url, originalName: result.originalName, width, height });
         App.elements.push(data);
         Elements.renderElement(data);
         Elements.select(data.id);
       } else {
-        const data = Elements.create('file', x, y, {
+        const extra = {
           url: result.url,
           originalName: result.originalName,
           fileSize: result.size,
           mimetype: result.mimetype,
           thumbnailUrl,
-        });
+        };
+        // Videos get sized to the clip's own aspect ratio; other files stay a card
+        if (thumbnailUrl && videoW && videoH) {
+          extra.width = Math.round(Math.min(videoW, 400));
+          extra.height = Math.round(extra.width * videoH / videoW);
+        }
+        const data = Elements.create('file', x, y, extra);
         App.elements.push(data);
         Elements.renderElement(data);
         Elements.select(data.id);

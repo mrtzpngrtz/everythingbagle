@@ -25,6 +25,16 @@ const Elements = {
     return null;
   },
 
+  // Media keeps its aspect ratio while scaling unless the user says otherwise.
+  // An explicit lockedRatio (properties panel) always wins over the default.
+  isRatioLocked(data) {
+    if (!data) return false;
+    if (data.lockedRatio !== undefined) return !!data.lockedRatio;
+    if (data.type === 'image' || data.type === 'icon' || data.type === 'draw') return true;
+    if (data.type === 'file' && data.thumbnailUrl) return true;
+    return false;
+  },
+
   init() {
     if (!App.READ_ONLY) this.bindCanvasEvents();
     this.bindViewerEvents();
@@ -96,8 +106,9 @@ const Elements = {
         defaults.imageZoom = extra.imageZoom || 100;
         break;
       case 'file':
-        defaults.width = 160;
-        defaults.height = 120;
+        // Video thumbnails pass their own dimensions so the card keeps the clip's ratio
+        defaults.width = extra.width || 160;
+        defaults.height = extra.height || 120;
         defaults.url = extra.url || '';
         defaults.originalName = extra.originalName || 'file';
         defaults.fileSize = extra.fileSize || 0;
@@ -338,6 +349,8 @@ const Elements = {
         inner.setAttribute('width', data.width);
         inner.setAttribute('height', data.height);
         inner.setAttribute('viewBox', `0 0 ${data.width} ${data.height}`);
+        // Stretch with the element box instead of letterboxing on free resize
+        inner.setAttribute('preserveAspectRatio', 'none');
         inner.style.width = '100%';
         inner.style.height = '100%';
         if (data.points && data.points.length > 1) {
@@ -728,6 +741,98 @@ const Elements = {
     }
   },
 
+  // Dragging a handle scales the whole selection when more than one element is
+  // selected. Groups come along automatically — clicking a member selects them all.
+  _resizeTargets(id) {
+    if (this.selected.length > 1 && this.selected.includes(id)) {
+      return this.selected.map(sid => this.getData(sid)).filter(d => d && !d.locked);
+    }
+    const data = this.getData(id);
+    return data ? [data] : [];
+  },
+
+  _buildResizeState(data, dir, e) {
+    const targets = this._resizeTargets(data.id);
+    const items = targets.map(d => ({
+      id: d.id,
+      type: d.type,
+      x: d.x, y: d.y, w: d.width, h: d.height,
+      fontSize: d.fontSize,
+      strokeWidth: d.type === 'draw' ? d.strokeWidth : undefined,
+    }));
+    const minX = Math.min(...items.map(i => i.x));
+    const minY = Math.min(...items.map(i => i.y));
+    const maxX = Math.max(...items.map(i => i.x + i.w));
+    const maxY = Math.max(...items.map(i => i.y + i.h));
+
+    return {
+      id: data.id,
+      dir,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: data.x,
+      origY: data.y,
+      origW: data.width,
+      origH: data.height,
+      origRatio: data.width / data.height,
+      origFontSize: data.fontSize,
+      multi: items.length > 1,
+      items,
+      bx: minX, by: minY,
+      bw: (maxX - minX) || 1,
+      bh: (maxY - minY) || 1,
+      minItemW: Math.min(...items.map(i => i.w)) || 1,
+      minItemH: Math.min(...items.map(i => i.h)) || 1,
+      // One locked member is enough to scale the whole selection uniformly.
+      ratioLocked: targets.some(d => this.isRatioLocked(d)),
+    };
+  },
+
+  // Scale every selected element around the fixed corner of the selection box.
+  _resizeMulti(r, dx, dy, constrain) {
+    const anchorX = r.dir.includes('w') ? r.bx + r.bw : r.bx;
+    const anchorY = r.dir.includes('n') ? r.by + r.bh : r.by;
+
+    let sx = 1, sy = 1;
+    if (r.dir.includes('e')) sx = (r.bw + dx) / r.bw;
+    if (r.dir.includes('w')) sx = (r.bw - dx) / r.bw;
+    if (r.dir.includes('s')) sy = (r.bh + dy) / r.bh;
+    if (r.dir.includes('n')) sy = (r.bh - dy) / r.bh;
+
+    if (constrain) {
+      const s = r.dir.length === 1
+        ? (r.dir === 'e' || r.dir === 'w' ? sx : sy)
+        : Math.max(sx, sy);
+      sx = sy = s;
+    }
+
+    // Floor the scale so the smallest member never collapses.
+    const minSx = 8 / r.minItemW;
+    const minSy = 6 / r.minItemH;
+    if (constrain) {
+      const s = Math.max(sx, minSx, minSy);
+      sx = sy = s;
+    } else {
+      sx = Math.max(sx, minSx);
+      sy = Math.max(sy, minSy);
+    }
+
+    const fontScale = constrain ? sx : Math.sqrt(sx * sy);
+    r.items.forEach(it => {
+      const props = {
+        x: anchorX + (it.x - anchorX) * sx,
+        y: anchorY + (it.y - anchorY) * sy,
+      };
+      // Pins are fixed-size markers — they move with the selection but don't grow
+      if (it.type === 'pin') { this.updateElement(it.id, props); return; }
+      props.width = it.w * sx;
+      props.height = it.h * sy;
+      if (it.fontSize) props.fontSize = Math.max(6, Math.round(it.fontSize * fontScale));
+      if (it.strokeWidth) props.strokeWidth = Math.max(0.5, it.strokeWidth * fontScale);
+      this.updateElement(it.id, props);
+    });
+  },
+
   bindCanvasEvents() {
     const container = Canvas.container;
     let marqueeStart = null;
@@ -759,18 +864,7 @@ const Elements = {
         const parentEl = target.closest('.canvas-element');
         const data = this.getData(parentEl.dataset.id);
         if (data && !data.locked) {
-          this.resizing = {
-            id: data.id,
-            dir: target.dataset.resize,
-            startX: e.clientX,
-            startY: e.clientY,
-            origX: data.x,
-            origY: data.y,
-            origW: data.width,
-            origH: data.height,
-            origRatio: data.width / data.height,
-            origFontSize: data.fontSize,
-          };
+          this.resizing = this._buildResizeState(data, target.dataset.resize, e);
         }
         return;
       }
@@ -1032,6 +1126,17 @@ const Elements = {
         const r = this.resizing;
         const dx = (e.clientX - r.startX) / Canvas.zoom;
         const dy = (e.clientY - r.startY) / Canvas.zoom;
+        const data = this.getData(r.id);
+
+        // Ratio stays locked by default for media; Shift flips whatever the default is.
+        const constrain = r.ratioLocked !== e.shiftKey;
+
+        if (r.multi) {
+          this._resizeMulti(r, dx, dy, constrain);
+          Connections.render();
+          Properties.updatePosition();
+          return;
+        }
 
         let newX = r.origX, newY = r.origY, newW = r.origW, newH = r.origH;
 
@@ -1040,30 +1145,24 @@ const Elements = {
         if (r.dir.includes('s')) newH = Math.max(30, r.origH + dy);
         if (r.dir.includes('n')) { newH = Math.max(30, r.origH - dy); newY = r.origY + (r.origH - newH); }
 
-        // Constrain aspect ratio: Shift key or element has lockedRatio
-        const data = this.getData(r.id);
-        const constrain = e.shiftKey || (data && data.lockedRatio);
         if (constrain && r.origW && r.origH) {
           const ratio = r.origRatio || (r.origW / r.origH);
-          if (r.dir.length === 1) {
-            // Edge handle: drive the other axis from the one being changed
-            if (r.dir === 'e' || r.dir === 'w') {
-              newH = newW / ratio;
-              if (r.dir === 'n') newY = r.origY + r.origH - newH;
-            } else {
-              newW = newH * ratio;
-              if (r.dir === 'n') newY = r.origY + r.origH - newH;
-            }
+          if (r.dir === 'e' || r.dir === 'w') {
+            // Edge handle: drive the other axis from the one being dragged
+            newH = Math.max(30, newW / ratio);
+            newW = newH * ratio;
+          } else if (r.dir === 'n' || r.dir === 's') {
+            newW = Math.max(40, newH * ratio);
+            newH = newW / ratio;
           } else {
             // Corner handle: use the larger scale to avoid shrinking one axis below min
-            const scaleW = newW / r.origW;
-            const scaleH = newH / r.origH;
-            const scale = Math.max(scaleW, scaleH);
+            const scale = Math.max(newW / r.origW, newH / r.origH);
             newW = Math.max(40, r.origW * scale);
             newH = Math.max(30, newW / ratio);
-            if (r.dir.includes('w')) newX = r.origX + r.origW - newW;
-            if (r.dir.includes('n')) newY = r.origY + r.origH - newH;
+            newW = newH * ratio;
           }
+          if (r.dir.includes('w')) newX = r.origX + r.origW - newW;
+          if (r.dir.includes('n')) newY = r.origY + r.origH - newH;
         }
 
         this.updateElement(r.id, { x: newX, y: newY, width: newW, height: newH });
@@ -1161,8 +1260,10 @@ const Elements = {
       }
 
       if (this.resizing) {
-        const dom = this.getDom(this.resizing.id);
-        if (dom) this.checkTextOverflow(dom);
+        this.resizing.items.forEach(it => {
+          const dom = this.getDom(it.id);
+          if (dom) this.checkTextOverflow(dom);
+        });
         this.resizing = null;
         App.saveState();
         Canvas.updateMinimap();

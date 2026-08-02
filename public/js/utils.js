@@ -62,6 +62,8 @@ const Utils = {
     xhr.send(formData);
   }),
 
+  // Resolves { url, width, height } — dimensions let the canvas element take the
+  // clip's aspect ratio — or null when the video can't be decoded.
   extractVideoThumbnail: (file) => new Promise(resolve => {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
@@ -80,7 +82,11 @@ const Utils = {
         canvas.height = Math.round(video.videoHeight * ratio);
         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
         URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL('image/jpeg', 0.75));
+        resolve({
+          url: canvas.toDataURL('image/jpeg', 0.75),
+          width: video.videoWidth,
+          height: video.videoHeight,
+        });
       } catch { URL.revokeObjectURL(url); resolve(null); }
     });
     video.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(null); });
