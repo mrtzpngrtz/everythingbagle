@@ -44,16 +44,22 @@ const Utils = {
     };
   },
 
-  uploadFile: (file, onProgress) => new Promise((resolve, reject) => {
+  _uploadOnce: (file, onProgress, filename) => new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
-    formData.append('file', file);
+    if (filename) formData.append('file', file, filename);
+    else formData.append('file', file);
     if (onProgress) {
       xhr.upload.addEventListener('progress', e => {
         if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
       });
     }
     xhr.addEventListener('load', () => {
+      if (xhr.status === 429) {
+        const err = new Error('Rate limited');
+        err.rateLimited = true;
+        return reject(err);
+      }
       try { resolve(JSON.parse(xhr.responseText)); }
       catch { reject(new Error('Upload failed')); }
     });
@@ -61,6 +67,70 @@ const Utils = {
     xhr.open('POST', '/api/upload');
     xhr.send(formData);
   }),
+
+  // The server allows 30 uploads/min. Since an image now costs two uploads
+  // (original + display variant), hitting the limit is routine — wait it out
+  // rather than dropping the file.
+  async uploadFile(file, onProgress, filename) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await Utils._uploadOnce(file, onProgress, filename);
+      } catch (err) {
+        if (!err.rateLimited || attempt >= 3) throw err;
+        await new Promise(r => setTimeout(r, 15000));
+      }
+    }
+  },
+
+  _variantType() {
+    if (!Utils.__variantType) {
+      Utils.__variantType = document.createElement('canvas').toDataURL('image/webp').startsWith('data:image/webp')
+        ? 'image/webp' : 'image/jpeg';
+    }
+    return Utils.__variantType;
+  },
+
+  // Produces a canvas-sized copy of an image so the browser doesn't hold a
+  // 4686x2634 bitmap (~47 MB decoded) to paint a 400px box. Returns null when
+  // the source is already small enough or can't be decoded — callers then just
+  // keep using the original.
+  async downscaleImage(src, maxEdge = 1600, quality = 0.85) {
+    // GIFs are left alone — a downscale would flatten the animation to one frame
+    if (src.type === 'image/gif') return null;
+
+    // Without WebP encoding the fallback is JPEG, which has no alpha channel —
+    // a transparent PNG would come back flattened onto black. Keep the original.
+    const type = Utils._variantType();
+    if (type !== 'image/webp' && (src.type === 'image/png' || src.type === 'image/avif')) return null;
+
+    let bmp;
+    try {
+      bmp = await createImageBitmap(src, { resizeQuality: 'high' });
+    } catch {
+      return null; // SVG, corrupt, or an unsupported codec
+    }
+
+    const nw = bmp.width, nh = bmp.height;
+    const ratio = Math.min(maxEdge / nw, maxEdge / nh, 1);
+    if (ratio === 1 && src.size && src.size < 400 * 1024) { bmp.close(); return null; }
+
+    const cw = Math.max(1, Math.round(nw * ratio));
+    const ch = Math.max(1, Math.round(nh * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bmp, 0, 0, cw, ch);
+    bmp.close();
+
+    const blob = await new Promise(r => canvas.toBlob(r, type, quality));
+    canvas.width = canvas.height = 0; // release the backing store now, not at GC time
+    if (!blob || (src.size && blob.size >= src.size)) return null;
+
+    return { blob, width: cw, height: ch, naturalWidth: nw, naturalHeight: nh, type };
+  },
 
   // Resolves { url, width, height } — dimensions let the canvas element take the
   // clip's aspect ratio — or null when the video can't be decoded.
@@ -153,6 +223,42 @@ const Utils = {
       t.classList.remove('util-toast--visible');
       setTimeout(() => t.remove(), 300);
     }, duration);
+  },
+};
+
+/* === FRAME SCHEDULER ===
+   Pointer events fire far more often than the screen refreshes — a 1000 Hz mouse
+   produced a dozen full grid/connection/minimap rebuilds per frame. Tasks are
+   named and last-write-wins, so scheduling the same task repeatedly within one
+   frame collapses to a single run, in a fixed order. */
+const Frame = {
+  _tasks: new Map(),
+  _queued: false,
+  _order: ['input', 'transform', 'grid', 'connections', 'minimap', 'overlays'],
+
+  schedule(name, fn) {
+    this._tasks.set(name, fn);
+    if (this._queued) return;
+    this._queued = true;
+    requestAnimationFrame(() => this._flush());
+  },
+
+  cancel(name) { this._tasks.delete(name); },
+
+  _run(name, fn) {
+    // One throwing task must not break the rAF chain for everything else
+    try { fn(); } catch (err) { console.error('[Frame]', name, err); }
+  },
+
+  _flush() {
+    this._queued = false;
+    const tasks = this._tasks;
+    this._tasks = new Map(); // anything scheduled during the flush lands next frame
+    this._order.forEach(name => {
+      const fn = tasks.get(name);
+      if (fn) { tasks.delete(name); this._run(name, fn); }
+    });
+    tasks.forEach((fn, name) => this._run(name, fn));
   },
 };
 

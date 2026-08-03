@@ -246,9 +246,14 @@ const Elements = {
         }
         if (data.url) {
           const img = document.createElement('img');
-          img.src = data.url;
+          // Canvas paints the downscaled variant; data.url stays the original for
+          // the viewer, clipboard and export.
+          img.src = data.displayUrl || data.url;
           img.alt = data.originalName || '';
           img.draggable = false;
+          img.decoding = 'async';
+          img.loading = 'lazy';
+          if (data.displayW) { img.width = data.displayW; img.height = data.displayH; }
           img.style.transform = `translate(${data.imgOffsetX||0}px, ${data.imgOffsetY||0}px) scale(${(data.imageZoom || 100) / 100})`;
           img.style.transformOrigin = 'center center';
           inner.appendChild(img);
@@ -666,6 +671,13 @@ const Elements = {
     const dom = this.getDom(id);
     if (!dom) return;
 
+    // Safety net for the minimap cache: any geometry change makes it stale.
+    // rAF coalescing caps this at one redraw per frame.
+    if (props.x !== undefined || props.y !== undefined ||
+        props.width !== undefined || props.height !== undefined) {
+      Canvas.invalidateMinimap();
+    }
+
     if (props.x !== undefined) dom.style.left = props.x + 'px';
     if (props.y !== undefined) dom.style.top = props.y + 'px';
     if (props.width !== undefined) dom.style.width = props.width + 'px';
@@ -724,6 +736,10 @@ const Elements = {
     }
     if (data.type === 'image') {
       const imgEl = dom.querySelector('.el-image img');
+      if (imgEl && (props.url !== undefined || props.displayUrl !== undefined)) {
+        const nextSrc = data.displayUrl || data.url;
+        if (imgEl.getAttribute('src') !== nextSrc) imgEl.src = nextSrc;
+      }
       if (imgEl && (props.imageZoom !== undefined || props.imgOffsetX !== undefined || props.imgOffsetY !== undefined)) {
         imgEl.style.transform = `translate(${data.imgOffsetX||0}px, ${data.imgOffsetY||0}px) scale(${(data.imageZoom||100) / 100})`;
       }
@@ -833,6 +849,72 @@ const Elements = {
     });
   },
 
+  // Both run inside the frame scheduler and read this._pointer rather than a
+  // captured event, so scheduling them repeatedly within one frame is a no-op.
+  _applyDrag() {
+    if (!this.dragging || !this.dragStart || !this._pointer) return;
+    const pos = Canvas.screenToCanvas(this._pointer.x, this._pointer.y);
+    const dx = pos.x - this.dragStart.mx;
+    const dy = pos.y - this.dragStart.my;
+    this.dragStart.origins.forEach(({ id, x, y }) => {
+      this.updateElement(id, { x: x + dx, y: y + dy });
+    });
+    Connections.render();
+    Properties.updatePosition();
+  },
+
+  _applyResize() {
+    const r = this.resizing;
+    if (!r || !this._pointer) return;
+    const dx = (this._pointer.x - r.startX) / Canvas.zoom;
+    const dy = (this._pointer.y - r.startY) / Canvas.zoom;
+    const data = this.getData(r.id);
+
+    // Ratio stays locked by default for media; Shift flips whatever the default is.
+    const constrain = r.ratioLocked !== !!this._pointer.shift;
+
+    if (r.multi) {
+      this._resizeMulti(r, dx, dy, constrain);
+    } else {
+      let newX = r.origX, newY = r.origY, newW = r.origW, newH = r.origH;
+
+      if (r.dir.includes('e')) newW = Math.max(40, r.origW + dx);
+      if (r.dir.includes('w')) { newW = Math.max(40, r.origW - dx); newX = r.origX + (r.origW - newW); }
+      if (r.dir.includes('s')) newH = Math.max(30, r.origH + dy);
+      if (r.dir.includes('n')) { newH = Math.max(30, r.origH - dy); newY = r.origY + (r.origH - newH); }
+
+      if (constrain && r.origW && r.origH) {
+        const ratio = r.origRatio || (r.origW / r.origH);
+        if (r.dir === 'e' || r.dir === 'w') {
+          // Edge handle: drive the other axis from the one being dragged
+          newH = Math.max(30, newW / ratio);
+          newW = newH * ratio;
+        } else if (r.dir === 'n' || r.dir === 's') {
+          newW = Math.max(40, newH * ratio);
+          newH = newW / ratio;
+        } else {
+          // Corner handle: use the larger scale to avoid shrinking one axis below min
+          const scale = Math.max(newW / r.origW, newH / r.origH);
+          newW = Math.max(40, r.origW * scale);
+          newH = Math.max(30, newW / ratio);
+          newW = newH * ratio;
+        }
+        if (r.dir.includes('w')) newX = r.origX + r.origW - newW;
+        if (r.dir.includes('n')) newY = r.origY + r.origH - newH;
+      }
+
+      this.updateElement(r.id, { x: newX, y: newY, width: newW, height: newH });
+      // Scale icon font proportionally with resize
+      if (data && data.type === 'icon' && r.origFontSize && r.origW) {
+        const newFontSize = Math.max(8, Math.round(r.origFontSize * (newW / r.origW)));
+        this.updateElement(r.id, { fontSize: newFontSize });
+      }
+    }
+
+    Connections.render();
+    Properties.updatePosition();
+  },
+
   bindCanvasEvents() {
     const container = Canvas.container;
     let marqueeStart = null;
@@ -864,6 +946,9 @@ const Elements = {
         const parentEl = target.closest('.canvas-element');
         const data = this.getData(parentEl.dataset.id);
         if (data && !data.locked) {
+          // Clear first: a leftover pointer from an earlier gesture would make
+          // mouseup apply a bogus delta on a click without movement.
+          this._pointer = null;
           this.resizing = this._buildResizeState(data, target.dataset.resize, e);
         }
         return;
@@ -953,6 +1038,7 @@ const Elements = {
           }
 
           const pos = Canvas.screenToCanvas(e.clientX, e.clientY);
+          this._pointer = null;
           this.dragging = true;
           this.dragStart = {
             mx: pos.x, my: pos.y,
@@ -1110,69 +1196,17 @@ const Elements = {
         return;
       }
 
+      // Drag and resize are applied once per frame instead of once per pointer
+      // event — the work is identical, it just stops running 3-10x per frame.
       if (this.dragging && this.dragStart) {
-        const pos = Canvas.screenToCanvas(e.clientX, e.clientY);
-        const dx = pos.x - this.dragStart.mx;
-        const dy = pos.y - this.dragStart.my;
-        this.dragStart.origins.forEach(({ id, x, y }) => {
-          this.updateElement(id, { x: x + dx, y: y + dy });
-        });
-        Connections.render();
-        Properties.updatePosition();
+        this._pointer = { x: e.clientX, y: e.clientY };
+        Frame.schedule('input', () => this._applyDrag());
         return;
       }
 
       if (this.resizing) {
-        const r = this.resizing;
-        const dx = (e.clientX - r.startX) / Canvas.zoom;
-        const dy = (e.clientY - r.startY) / Canvas.zoom;
-        const data = this.getData(r.id);
-
-        // Ratio stays locked by default for media; Shift flips whatever the default is.
-        const constrain = r.ratioLocked !== e.shiftKey;
-
-        if (r.multi) {
-          this._resizeMulti(r, dx, dy, constrain);
-          Connections.render();
-          Properties.updatePosition();
-          return;
-        }
-
-        let newX = r.origX, newY = r.origY, newW = r.origW, newH = r.origH;
-
-        if (r.dir.includes('e')) newW = Math.max(40, r.origW + dx);
-        if (r.dir.includes('w')) { newW = Math.max(40, r.origW - dx); newX = r.origX + (r.origW - newW); }
-        if (r.dir.includes('s')) newH = Math.max(30, r.origH + dy);
-        if (r.dir.includes('n')) { newH = Math.max(30, r.origH - dy); newY = r.origY + (r.origH - newH); }
-
-        if (constrain && r.origW && r.origH) {
-          const ratio = r.origRatio || (r.origW / r.origH);
-          if (r.dir === 'e' || r.dir === 'w') {
-            // Edge handle: drive the other axis from the one being dragged
-            newH = Math.max(30, newW / ratio);
-            newW = newH * ratio;
-          } else if (r.dir === 'n' || r.dir === 's') {
-            newW = Math.max(40, newH * ratio);
-            newH = newW / ratio;
-          } else {
-            // Corner handle: use the larger scale to avoid shrinking one axis below min
-            const scale = Math.max(newW / r.origW, newH / r.origH);
-            newW = Math.max(40, r.origW * scale);
-            newH = Math.max(30, newW / ratio);
-            newW = newH * ratio;
-          }
-          if (r.dir.includes('w')) newX = r.origX + r.origW - newW;
-          if (r.dir.includes('n')) newY = r.origY + r.origH - newH;
-        }
-
-        this.updateElement(r.id, { x: newX, y: newY, width: newW, height: newH });
-        // Scale icon font proportionally with resize
-        if (data.type === 'icon' && r.origFontSize && r.origW) {
-          const newFontSize = Math.max(8, Math.round(r.origFontSize * (newW / r.origW)));
-          this.updateElement(r.id, { fontSize: newFontSize });
-        }
-        Connections.render();
-        Properties.updatePosition();
+        this._pointer = { x: e.clientX, y: e.clientY, shift: e.shiftKey };
+        Frame.schedule('input', () => this._applyResize());
         return;
       }
 
@@ -1196,7 +1230,7 @@ const Elements = {
         drawingPath.points.push(pos);
         const path = document.getElementById('draw-preview-path');
         if (path) {
-          const cRect = Canvas.container.getBoundingClientRect();
+          const cRect = Canvas.getRect();
           const d = drawingPath.points.map((p, i) => {
             const s = Canvas.canvasToScreen(p.x, p.y);
             return (i === 0 ? 'M' : 'L') + (s.x - cRect.left).toFixed(1) + ' ' + (s.y - cRect.top).toFixed(1);
@@ -1215,7 +1249,7 @@ const Elements = {
 
         // Live shape preview in screen space
         const pvg = document.getElementById('preview-svg');
-        const cRect = Canvas.container.getBoundingClientRect();
+        const cRect = Canvas.getRect();
         const tl = Canvas.canvasToScreen(drawingShape.x, drawingShape.y);
         const br = Canvas.canvasToScreen(drawingShape.x + drawingShape.width, drawingShape.y + drawingShape.height);
         const px = tl.x - cRect.left, py = tl.y - cRect.top;
@@ -1252,7 +1286,11 @@ const Elements = {
         return;
       }
 
+      // Apply the last pointer position before tearing the gesture down, so a
+      // frame still sitting in the scheduler can't be lost.
       if (this.dragging) {
+        Frame.cancel('input');
+        this._applyDrag();
         this.dragging = false;
         this.dragStart = null;
         App.saveState();
@@ -1260,6 +1298,8 @@ const Elements = {
       }
 
       if (this.resizing) {
+        Frame.cancel('input');
+        this._applyResize();
         this.resizing.items.forEach(it => {
           const dom = this.getDom(it.id);
           if (dom) this.checkTextOverflow(dom);

@@ -870,6 +870,21 @@ body.dark .board-dropdown-item .board-name {
   z-index: 0;
 }
 
+/* Grid colours live here so a dark-mode switch costs no redraw */
+.grid-dot   { fill: #DDDDDD; }
+.grid-cross { stroke: #C0C0C0; stroke-width: 0.5; }
+body.dark .grid-dot   { fill: #2A2A2A; }
+body.dark .grid-cross { stroke: #303030; }
+
+/* While panning, skip hover work the user can't see anyway: no hit-testing,
+   no outline/anchor transitions firing as the cursor sweeps over elements. */
+#canvas-container.panning #canvas { will-change: transform; }
+#canvas-container.panning .canvas-element {
+  transition: none;
+  pointer-events: none;
+}
+#canvas-container.panning .connection-anchor { transition: none; }
+
 #connections-svg {
   position: absolute;
   top: 0; left: 0;

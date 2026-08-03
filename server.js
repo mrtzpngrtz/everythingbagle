@@ -382,7 +382,14 @@ app.get('/favicon.svg', (req, res) => res.sendFile(path.join(__dirname, 'public'
 app.use('/uploads', (req, res, next) => {
   if (!req.session?.user && !req.session?.shareToken) return res.status(401).send('Unauthorized');
   next();
-}, express.static(path.join(__dirname, 'uploads')));
+}, express.static(path.join(__dirname, 'uploads'), {
+  // Upload filenames carry a timestamp and are never overwritten, so they can be
+  // cached hard. `private` because the route sits behind a session check —
+  // shared proxies must not hold on to authorized bytes.
+  maxAge: '365d',
+  immutable: true,
+  setHeaders: (res) => res.setHeader('Cache-Control', 'private, max-age=31536000, immutable'),
+}));
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //  PAGE ROUTES

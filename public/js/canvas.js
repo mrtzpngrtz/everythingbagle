@@ -17,15 +17,36 @@ const Canvas = {
     this.container = document.getElementById('canvas-container');
     this.canvasEl = document.getElementById('canvas');
     this.gridSvg = document.getElementById('grid-svg');
+    this._coordEl = document.getElementById('cursor-coord');
+    this._zoomEl = document.getElementById('zoom-level');
 
     // Center canvas
     this.panX = window.innerWidth / 2;
     this.panY = (window.innerHeight - 40) / 2;
 
+    // The container moves and resizes with flow mode and the sidebar, so watch it
+    // rather than sprinkling invalidateRect() through every toggle.
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => this.invalidateRect()).observe(this.container);
+    }
+    window.addEventListener('scroll', () => this.invalidateRect(), true);
+    window.addEventListener('resize', () => this.invalidateRect());
+
     this.bindEvents();
     this.updateTransform();
-    this.drawGrid();
+    this.initGrid();
+    this.applyGrid();
   },
+
+  // screenToCanvas/canvasToScreen used to call getBoundingClientRect() every
+  // invocation — once per connection endpoint per frame, interleaved with SVG
+  // writes, which forces a layout each time.
+  getRect() {
+    if (!this._rect) this._rect = this.container.getBoundingClientRect();
+    return this._rect;
+  },
+
+  invalidateRect() { this._rect = null; },
 
   bindEvents() {
     // Wheel zoom
@@ -39,7 +60,7 @@ const Canvas = {
       }
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const rect = this.container.getBoundingClientRect();
+      const rect = this.getRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       this.zoomAt(mx, my, delta);
@@ -56,14 +77,8 @@ const Canvas = {
     });
 
     window.addEventListener('mousemove', (e) => {
-      // Update cursor coords
-      if (this.container) {
-        const pos = this.screenToCanvas(e.clientX, e.clientY);
-        const coordEl = document.getElementById('cursor-coord');
-        if (coordEl) {
-          coordEl.textContent = `${Math.round(pos.x)}, ${Math.round(pos.y)}`;
-        }
-      }
+      this._lastPointer = { x: e.clientX, y: e.clientY };
+      Frame.schedule('overlays', () => this.updateCursorReadout());
 
       if (this.isPanning) {
         const dx = e.clientX - this.lastMouse.x;
@@ -71,10 +86,7 @@ const Canvas = {
         this.panX += dx;
         this.panY += dy;
         this.lastMouse = { x: e.clientX, y: e.clientY };
-        this.updateTransform();
-        this.drawGrid();
-        Connections.render();
-        this.updateMinimap();
+        this.scheduleViewUpdate();
       }
     });
 
@@ -120,9 +132,25 @@ const Canvas = {
 
     // Resize
     window.addEventListener('resize', Utils.debounce(() => {
-      this.drawGrid();
+      this.invalidateRect();
+      this.applyGrid();
+      this.invalidateMinimap();
       this.updateMinimap();
     }, 200));
+  },
+
+  updateCursorReadout() {
+    if (!this._coordEl || !this._lastPointer) return;
+    const pos = this.screenToCanvas(this._lastPointer.x, this._lastPointer.y);
+    this._coordEl.textContent = `${Math.round(pos.x)}, ${Math.round(pos.y)}`;
+  },
+
+  // Everything pan/zoom touches, collapsed into one frame
+  scheduleViewUpdate() {
+    Frame.schedule('transform', () => this.updateTransform());
+    Frame.schedule('grid', () => this.applyGrid());
+    Frame.schedule('connections', () => Connections.render());
+    Frame.schedule('minimap', () => this.updateMinimapViewport());
   },
 
   bindTouchEvents() {
@@ -161,7 +189,7 @@ const Canvas = {
         const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         if (lastTouchDist > 0) {
           const factor = dist / lastTouchDist;
-          const rect = this.container.getBoundingClientRect();
+          const rect = this.getRect();
           const cx = midX - rect.left;
           const cy = midY - rect.top;
           const newZoom = Utils.clamp(this.zoom * factor, this.minZoom, this.maxZoom);
@@ -169,10 +197,7 @@ const Canvas = {
           this.panX = cx - (cx - this.panX) * scale + (midX - lastMidX);
           this.panY = cy - (cy - this.panY) * scale + (midY - lastMidY);
           this.zoom = newZoom;
-          this.updateTransform();
-          this.drawGrid();
-          Connections.render();
-          this.updateMinimap();
+          this.scheduleViewUpdate();
         }
         lastTouchDist = dist;
         lastMidX = midX;
@@ -192,10 +217,7 @@ const Canvas = {
           this.panY += e.touches[0].clientY - touchStartY;
           touchStartX = e.touches[0].clientX;
           touchStartY = e.touches[0].clientY;
-          this.updateTransform();
-          this.drawGrid();
-          Connections.render();
-          this.updateMinimap();
+          this.scheduleViewUpdate();
         }
       }
     }, { passive: false });
@@ -219,21 +241,18 @@ const Canvas = {
     this.panX = cx - (cx - this.panX) * scale;
     this.panY = cy - (cy - this.panY) * scale;
     this.zoom = newZoom;
-    this.updateTransform();
-    this.drawGrid();
-    Connections.render();
-    this.updateMinimap();
+    this.scheduleViewUpdate();
   },
 
   updateTransform() {
     this.canvasEl.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
-    document.getElementById('zoom-level').textContent = Math.round(this.zoom * 100);
+    if (this._zoomEl) this._zoomEl.textContent = Math.round(this.zoom * 100);
     if (typeof Collab !== 'undefined') Collab._repositionAllCursors();
     if (typeof Properties !== 'undefined') Properties.updatePosition();
   },
 
   screenToCanvas(sx, sy) {
-    const rect = this.container.getBoundingClientRect();
+    const rect = this.getRect();
     return {
       x: (sx - rect.left - this.panX) / this.zoom,
       y: (sy - rect.top - this.panY) / this.zoom,
@@ -241,75 +260,74 @@ const Canvas = {
   },
 
   canvasToScreen(cx, cy) {
-    const rect = this.container.getBoundingClientRect();
+    const rect = this.getRect();
     return {
       x: cx * this.zoom + this.panX + rect.left,
       y: cy * this.zoom + this.panY + rect.top,
     };
   },
 
-  drawGrid() {
+  // The grid used to be torn down and rebuilt — 250-500 <line> nodes — on every
+  // single mousemove. Both layers are patterns now: the nodes are created once
+  // and panning only moves the pattern origin.
+  initGrid() {
     const svg = this.gridSvg;
-    const w = this.container.clientWidth;
-    const h = this.container.clientHeight;
-    svg.setAttribute('width', w);
-    svg.setAttribute('height', h);
-    svg.innerHTML = '';
+    svg.innerHTML = `
+      <defs>
+        <pattern id="grid-dots" patternUnits="userSpaceOnUse">
+          <circle class="grid-dot"/>
+        </pattern>
+        <pattern id="grid-crosses" patternUnits="userSpaceOnUse">
+          <line class="grid-cross" data-cross="h"/>
+          <line class="grid-cross" data-cross="v"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid-dots)"/>
+      <rect width="100%" height="100%" fill="url(#grid-crosses)"/>`;
+    this._grid = {
+      dots: svg.querySelector('#grid-dots'),
+      dot: svg.querySelector('.grid-dot'),
+      crosses: svg.querySelector('#grid-crosses'),
+      ch: svg.querySelector('[data-cross="h"]'),
+      cv: svg.querySelector('[data-cross="v"]'),
+    };
+  },
+
+  applyGrid() {
+    const g = this._grid;
+    if (!g) return;
 
     let baseSpacing = 40;
     let spacing = baseSpacing * this.zoom;
     while (spacing < 20) { spacing *= 2; baseSpacing *= 2; }
     while (spacing > 80) { spacing /= 2; baseSpacing /= 2; }
 
-    const offsetX = this.panX % spacing;
-    const offsetY = this.panY % spacing;
-    const dotSize = Math.max(0.8, this.zoom * 0.9);
+    g.dots.setAttribute('width', spacing);
+    g.dots.setAttribute('height', spacing);
+    g.dots.setAttribute('x', this.panX % spacing);
+    g.dots.setAttribute('y', this.panY % spacing);
+    g.dot.setAttribute('cx', spacing / 2);
+    g.dot.setAttribute('cy', spacing / 2);
+    g.dot.setAttribute('r', Math.max(0.8, this.zoom * 0.9));
 
-    // Dot pattern
-    const defs = Utils.createSVGElement('defs');
-    const pattern = Utils.createSVGElement('pattern', {
-      id: 'grid-dots',
-      width: spacing,
-      height: spacing,
-      patternUnits: 'userSpaceOnUse',
-      x: offsetX,
-      y: offsetY,
-    });
-    const isDark = document.body.classList.contains('dark');
-    const dot = Utils.createSVGElement('circle', {
-      cx: spacing / 2,
-      cy: spacing / 2,
-      r: dotSize,
-      fill: isDark ? '#2A2A2A' : '#DDDDDD',
-    });
-    pattern.appendChild(dot);
-    defs.appendChild(pattern);
-    svg.appendChild(defs);
-
-    const rect = Utils.createSVGElement('rect', {
-      width: '100%',
-      height: '100%',
-      fill: 'url(#grid-dots)',
-    });
-    svg.appendChild(rect);
-
-    // Cross (+) registration markers every 8 grid cells
-    const crossStep = baseSpacing * 8;
-    const crossSvgStep = crossStep * this.zoom;
-    const crossOffX = this.panX % crossSvgStep;
-    const crossOffY = this.panY % crossSvgStep;
-    const crossColor = isDark ? '#303030' : '#C0C0C0';
+    // Cross (+) registration markers every 8 grid cells. The cross sits at the
+    // tile centre so its arms aren't clipped by the tile edge.
+    const step = baseSpacing * 8 * this.zoom;
+    const c = step / 2;
     const arm = 7;
-    for (let x = crossOffX - crossSvgStep; x < w + crossSvgStep; x += crossSvgStep) {
-      for (let y = crossOffY - crossSvgStep; y < h + crossSvgStep; y += crossSvgStep) {
-        const hLine = Utils.createSVGElement('line', { x1: x - arm, y1: y, x2: x + arm, y2: y, stroke: crossColor, 'stroke-width': '0.5' });
-        const vLine = Utils.createSVGElement('line', { x1: x, y1: y - arm, x2: x, y2: y + arm, stroke: crossColor, 'stroke-width': '0.5' });
-        svg.appendChild(hLine);
-        svg.appendChild(vLine);
-      }
-    }
-
+    g.crosses.setAttribute('width', step);
+    g.crosses.setAttribute('height', step);
+    g.crosses.setAttribute('x', (this.panX % step) - c);
+    g.crosses.setAttribute('y', (this.panY % step) - c);
+    g.ch.setAttribute('x1', c - arm); g.ch.setAttribute('y1', c);
+    g.ch.setAttribute('x2', c + arm); g.ch.setAttribute('y2', c);
+    g.cv.setAttribute('x1', c); g.cv.setAttribute('y1', c - arm);
+    g.cv.setAttribute('x2', c); g.cv.setAttribute('y2', c + arm);
   },
+
+  // Kept for the existing call sites; colours now come from CSS variables so a
+  // theme switch needs no redraw at all.
+  drawGrid() { this.applyGrid(); },
 
   fitAll() {
     const elements = App.elements;
@@ -348,10 +366,17 @@ const Canvas = {
     this.updateMinimap();
   },
 
-  updateMinimap() {
+  _mm: { minX: 0, minY: 0, scale: 1, dirty: true, empty: true },
+
+  invalidateMinimap() { this._mm.dirty = true; },
+
+  // Content only needs redrawing when elements change; panning just moves the
+  // viewport rectangle, which is four style writes.
+  drawMinimapContent() {
+    if (!this._mm.dirty) return;
     const canvas = document.getElementById('minimap-canvas');
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const vp = document.getElementById('minimap-viewport');
     const w = canvas.width;
     const h = canvas.height;
 
@@ -361,8 +386,11 @@ const Canvas = {
     ctx.fillRect(0, 0, w, h);
 
     const elements = App.elements;
-    if (elements.length === 0) {
-      vp.style.display = 'none';
+    this._mm.empty = elements.length === 0;
+    this._mm.dirty = false;
+    if (this._mm.empty) {
+      const vp = document.getElementById('minimap-viewport');
+      if (vp) vp.style.display = 'none';
       return;
     }
 
@@ -376,34 +404,54 @@ const Canvas = {
 
     const pad = 100;
     minX -= pad; minY -= pad; maxX += pad; maxY += pad;
-    const cw = maxX - minX;
-    const ch = maxY - minY;
-    const scale = Math.min(w / cw, h / ch);
+    const scale = Math.min(w / (maxX - minX), h / (maxY - minY));
+    this._mm.minX = minX;
+    this._mm.minY = minY;
+    this._mm.scale = scale;
 
-    elements.forEach(el => {
-      const ex = (el.x - minX) * scale;
-      const ey = (el.y - minY) * scale;
-      const ew = (el.width || 100) * scale;
-      const eh = (el.height || 60) * scale;
-
-      ctx.fillStyle = isDark ? (el.type === 'image' ? '#333333' : '#2A2A2A') : (el.type === 'image' ? '#CCCCCC' : '#E0E0E0');
-      ctx.strokeStyle = isDark ? '#E8E8E8' : '#111111';
-      ctx.lineWidth = 0.5;
-      ctx.fillRect(ex, ey, Math.max(ew, 2), Math.max(eh, 2));
-      ctx.strokeRect(ex, ey, Math.max(ew, 2), Math.max(eh, 2));
+    // Two buckets, so the canvas state is set twice instead of 4x per element
+    const buckets = [
+      { list: elements.filter(el => el.type === 'image'), fill: isDark ? '#333333' : '#CCCCCC' },
+      { list: elements.filter(el => el.type !== 'image'), fill: isDark ? '#2A2A2A' : '#E0E0E0' },
+    ];
+    ctx.strokeStyle = isDark ? '#E8E8E8' : '#111111';
+    ctx.lineWidth = 0.5;
+    buckets.forEach(({ list, fill }) => {
+      if (!list.length) return;
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      list.forEach(el => {
+        ctx.rect(
+          (el.x - minX) * scale, (el.y - minY) * scale,
+          Math.max((el.width || 100) * scale, 2), Math.max((el.height || 60) * scale, 2),
+        );
+      });
+      ctx.fill();
+      ctx.stroke();
     });
+  },
 
-    // Viewport rect
-    const containerRect = this.container.getBoundingClientRect();
+  updateMinimapViewport() {
+    if (this._mm.empty) return;
+    const canvas = document.getElementById('minimap-canvas');
+    const vp = document.getElementById('minimap-viewport');
+    if (!canvas || !vp) return;
+
+    const { minX, minY, scale } = this._mm;
+    const rect = this.getRect();
     const vpLeft = (-this.panX / this.zoom - minX) * scale;
     const vpTop = (-this.panY / this.zoom - minY) * scale;
-    const vpWidth = (containerRect.width / this.zoom) * scale;
-    const vpHeight = (containerRect.height / this.zoom) * scale;
 
     vp.style.display = 'block';
-    vp.style.left = Utils.clamp(vpLeft, 0, w) + 'px';
-    vp.style.top = (Utils.clamp(vpTop, 0, h) + 20) + 'px'; // offset for minimap label
-    vp.style.width = Math.min(vpWidth, w) + 'px';
-    vp.style.height = Math.min(vpHeight, h) + 'px';
+    vp.style.left = Utils.clamp(vpLeft, 0, canvas.width) + 'px';
+    vp.style.top = (Utils.clamp(vpTop, 0, canvas.height) + 20) + 'px'; // offset for minimap label
+    vp.style.width = Math.min((rect.width / this.zoom) * scale, canvas.width) + 'px';
+    vp.style.height = Math.min((rect.height / this.zoom) * scale, canvas.height) + 'px';
+  },
+
+  updateMinimap() {
+    this.invalidateMinimap();
+    this.drawMinimapContent();
+    this.updateMinimapViewport();
   },
 };

@@ -199,7 +199,7 @@ const Collab = {
   _positionCursor(peer, canvasX, canvasY) {
     if (!peer.cursorEl || !Canvas.container) return;
     const screen = Canvas.canvasToScreen(canvasX, canvasY);
-    const containerRect = Canvas.container.getBoundingClientRect();
+    const containerRect = Canvas.getRect();
     peer.cursorEl.style.left = (screen.x - containerRect.left) + 'px';
     peer.cursorEl.style.top  = (screen.y - containerRect.top)  + 'px';
     peer.cursorEl.style.display = 'block';

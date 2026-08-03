@@ -787,6 +787,16 @@ const Storage = {
             }
           });
           footerRight.appendChild(deleteBtn);
+
+          const optimizeBtn = document.createElement('button');
+          optimizeBtn.className = 'dash-card-btn';
+          optimizeBtn.textContent = '⚡';
+          optimizeBtn.title = 'Optimize images (shrink oversized uploads)';
+          optimizeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.optimizeBoardImages(board.name, optimizeBtn);
+          });
+          footerRight.appendChild(optimizeBtn);
         }
 
         const downloadBtn = document.createElement('button');
@@ -970,6 +980,83 @@ const Storage = {
     return { total: targets.length, failed };
   },
 
+  // Backfill for boards uploaded before display variants existed: fetch each
+  // oversized image, downscale it in the browser and point the element at the
+  // small copy. Originals stay on disk — data.url keeps referencing them.
+  async optimizeBoardImages(name, btn) {
+    const orig = btn ? btn.textContent : null;
+    if (btn) { btn.textContent = '…'; btn.disabled = true; }
+    try {
+      const url = this.getBoardApiPath(name, null);
+      const res = await fetch(url);
+      const board = await res.json();
+      const elements = board.elements || [];
+
+      const targets = elements.filter(el =>
+        el.type === 'image' && el.url && el.url.startsWith('/uploads/') && !el.displayUrl && !el.optimized);
+
+      if (targets.length === 0) {
+        Utils.toast('Nothing to optimize');
+        return;
+      }
+
+      let done = 0, failed = 0, before = 0, after = 0;
+      // Same batching and rate-limit handling as the import path
+      for (let i = 0; i < targets.length; i += 3) {
+        await Promise.all(targets.slice(i, i + 3).map(async el => {
+          try {
+            const blob = await (await fetch(el.url)).blob();
+            const variant = await Utils.downscaleImage(blob);
+            if (!variant) {
+              el.optimized = true; // already small enough — don't look at it again
+            } else {
+              const ext = variant.type === 'image/webp' ? '.webp' : '.jpg';
+              const up = await Utils.uploadFile(variant.blob, null, `display_${el.id}${ext}`);
+              el.displayUrl = up.url;
+              el.displayW = variant.width;
+              el.displayH = variant.height;
+              el.optimized = true;
+              before += blob.size;
+              after += variant.blob.size;
+            }
+          } catch (err) {
+            failed++;
+            console.warn('Could not optimize image:', el.url, err);
+          }
+          done++;
+          if (btn) btn.textContent = `${done}/${targets.length}`;
+        }));
+      }
+
+      const saveRes = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          elements,
+          connections: board.connections || [],
+          viewport: board.viewport || { panX: 0, panY: 0, zoom: 1 },
+          ...(board.thumbnail ? { thumbnail: board.thumbnail } : {}),
+        }),
+      });
+      if (!saveRes.ok) throw new Error(`save failed (${saveRes.status})`);
+
+      // If this board is open right now, show the result without a reload
+      if (this.currentBoard === name && !this.currentBoardOwner) {
+        App.elements = elements;
+        Elements.renderAll();
+      }
+
+      const savedNote = before > after ? ` · ${Utils.formatFileSize(before - after)} saved` : '';
+      Utils.toast(`Optimized ${done - failed}/${targets.length} images${savedNote}`, 4000);
+      if (failed) console.warn(`${failed} images could not be optimized`);
+    } catch (err) {
+      console.error('Optimize failed:', err);
+      await Dialog.alert('Optimize failed: ' + err.message, 'ERROR');
+    } finally {
+      if (btn) { btn.textContent = orig; btn.disabled = false; }
+    }
+  },
+
   async downloadBoardByName(name, owner, btn) {
     const orig = btn ? btn.textContent : null;
     const now = new Date();
@@ -996,7 +1083,17 @@ const Storage = {
       const url = this.getBoardApiPath(name, owner);
       const res = await fetch(url);
       const data = await res.json();
-      const elements = (data.elements || []).map(el => ({ ...el }));
+      // displayUrl points at a file on THIS server. Carrying it into an export
+      // would leave broken images after importing elsewhere, while `url` gets
+      // correctly re-uploaded. Strip it — "Optimize images" regenerates it.
+      const elements = (data.elements || []).map(el => {
+        const copy = { ...el };
+        delete copy.displayUrl;
+        delete copy.displayW;
+        delete copy.displayH;
+        delete copy.optimized;
+        return copy;
+      });
       await this._embedFiles(elements, (done, total) => {
         if (btn && total > 1) btn.textContent = `${done}/${total}`;
       });
@@ -1042,6 +1139,14 @@ const Storage = {
     const cleanName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
 
     const elements = data.elements;
+    // A file from another instance may still carry these — they'd point at
+    // uploads that don't exist here.
+    elements.forEach(el => {
+      delete el.displayUrl;
+      delete el.displayW;
+      delete el.displayH;
+      delete el.optimized;
+    });
     const result = await this._reuploadEmbedded(elements, (done, total) => {
       if (total > 1) Utils.toast(`Restoring files ${done}/${total}`, 1200);
     });

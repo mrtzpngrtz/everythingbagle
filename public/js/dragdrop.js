@@ -148,22 +148,53 @@ const DragDrop = {
         }
       }
 
-      const result = await Utils.uploadFile(file, pct => toast.update(pct));
-      toast.done();
+      const isImage = file.type.startsWith('image/');
 
-      if (file.type.startsWith('image/')) {
-        const img = new Image();
-        img.src = result.url;
-        await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+      // Decoding locally also gives us the pixel dimensions, so the old trick of
+      // downloading the just-uploaded full-res file back just to read
+      // naturalWidth is no longer needed.
+      const variant = isImage ? await Utils.downscaleImage(file) : null;
+
+      const result = await Utils.uploadFile(file, pct => toast.update(variant ? Math.round(pct * 0.7) : pct));
+
+      if (isImage) {
+        const extra = { url: result.url, originalName: result.originalName };
+
+        if (variant) {
+          const ext = variant.type === 'image/webp' ? '.webp' : '.jpg';
+          const name = 'display_' + file.name.replace(/\.[^.]+$/, '') + ext;
+          try {
+            const disp = await Utils.uploadFile(variant.blob, pct => toast.update(70 + Math.round(pct * 0.3)), name);
+            extra.displayUrl = disp.url;
+            extra.displayW = variant.width;
+            extra.displayH = variant.height;
+          } catch (err) {
+            // Element still works off the original — just without the saving
+            console.warn('Display variant upload failed:', err);
+          }
+        }
+        toast.done();
+
         const maxW = 400;
-        const ratio = (img.naturalWidth / img.naturalHeight) || 1;
-        const width = Math.round(Math.min(img.naturalWidth || maxW, maxW));
-        const height = Math.round(width / ratio);
-        const data = Elements.create('image', x, y, { url: result.url, originalName: result.originalName, width, height });
+        const nw = variant?.naturalWidth, nh = variant?.naturalHeight;
+        if (nw && nh) {
+          extra.width = Math.round(Math.min(nw, maxW));
+          extra.height = Math.round(extra.width * nh / nw);
+        } else {
+          const img = new Image();
+          img.src = result.url;
+          await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+          const ratio = (img.naturalWidth / img.naturalHeight) || 1;
+          extra.width = Math.round(Math.min(img.naturalWidth || maxW, maxW));
+          extra.height = Math.round(extra.width / ratio);
+        }
+
+        const data = Elements.create('image', x, y, extra);
         App.elements.push(data);
         Elements.renderElement(data);
         Elements.select(data.id);
       } else {
+        toast.done();
         const extra = {
           url: result.url,
           originalName: result.originalName,

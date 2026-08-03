@@ -16,13 +16,60 @@ const Connections = {
   _ITERS: 12,      // constraint iterations per step
   _SLACK: 1.3,     // rope length = SLACK × straight-line distance
 
+  _nodes: new Map(), // connId -> { hit, main, label, kind }
+
   init() {
     this.svg = document.getElementById('connections-svg');
-    // Persistent group for thread paths — survives render() clears
+    this._ensureDefs();
+    // Persistent group for thread paths — appended last so it stays on top
     this._threadGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this._threadGroup.id = 'thread-group';
     this.svg.appendChild(this._threadGroup);
     this.bindEvents();
+    this.bindConnectionEvents();
+  },
+
+  _ensureDefs() {
+    if (this.svg.querySelector('defs')) return;
+    const defs = Utils.createSVGElement('defs');
+    [['arrowhead', 10, 'auto'], ['arrowhead-start', 0, 'auto-start-reverse']].forEach(([id, refX, orient]) => {
+      const marker = Utils.createSVGElement('marker', {
+        id, markerWidth: 10, markerHeight: 7, refX, refY: 3.5, orient,
+      });
+      marker.appendChild(Utils.createSVGElement('polygon', {
+        points: '0 0, 10 3.5, 0 7', class: 'connection-arrow',
+      }));
+      defs.appendChild(marker);
+    });
+    this.svg.appendChild(defs);
+  },
+
+  // Two delegated listeners for the whole SVG. Previously render() attached a
+  // fresh dblclick + contextmenu pair per connection — on every pan frame.
+  bindConnectionEvents() {
+    this.svg.addEventListener('dblclick', (e) => {
+      const target = e.target.closest('[data-connection-id]');
+      if (!target) return;
+      e.stopPropagation();
+      const id = target.getAttribute('data-connection-id');
+      App.connections = App.connections.filter(c => c.id !== id);
+      this.threadSims.delete(id);
+      this.render();
+      App.saveState();
+    });
+
+    this.svg.addEventListener('contextmenu', (e) => {
+      const target = e.target.closest('[data-connection-id]');
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const conn = App.connections.find(c => c.id === target.getAttribute('data-connection-id'));
+      if (!conn) return;
+      const styles = ['curve', 'arrow', 'line'];
+      conn.style = styles[(styles.indexOf(conn.style) + 1) % styles.length];
+      this.render();
+      App.saveState();
+    });
   },
 
   startDrawing(fromId, fromAnchor, event) {
@@ -31,12 +78,13 @@ const Connections = {
 
     const point = this.getAnchorPoint(fromData, fromAnchor);
     const screenPoint = Canvas.canvasToScreen(point.x, point.y);
+    const rect = Canvas.getRect();
 
     const line = Utils.createSVGElement('line', {
-      x1: screenPoint.x - Canvas.container.getBoundingClientRect().left,
-      y1: screenPoint.y - Canvas.container.getBoundingClientRect().top,
-      x2: screenPoint.x - Canvas.container.getBoundingClientRect().left,
-      y2: screenPoint.y - Canvas.container.getBoundingClientRect().top,
+      x1: screenPoint.x - rect.left,
+      y1: screenPoint.y - rect.top,
+      x2: screenPoint.x - rect.left,
+      y2: screenPoint.y - rect.top,
       stroke: '#4a9eff',
       'stroke-width': 2,
       'stroke-dasharray': '6,3',
@@ -48,7 +96,7 @@ const Connections = {
   bindEvents() {
     window.addEventListener('mousemove', (e) => {
       if (!this.drawing) return;
-      const rect = Canvas.container.getBoundingClientRect();
+      const rect = Canvas.getRect();
       this.drawing.tempLine.setAttribute('x2', e.clientX - rect.left);
       this.drawing.tempLine.setAttribute('y2', e.clientY - rect.top);
     });
@@ -220,7 +268,7 @@ const Connections = {
   },
 
   _drawThreadPaths() {
-    const rect = Canvas.container.getBoundingClientRect();
+    const rect = Canvas.getRect();
 
     // Update paths for existing thread connections
     App.connections.forEach(conn => {
@@ -314,141 +362,121 @@ const Connections = {
 
   // ── Static rendering ───────────────────────────────────
 
+  // Reuses the existing SVG nodes and only writes coordinates. The old version
+  // tore the whole SVG down and rebuilt it — plus two listeners per connection —
+  // on every pan, zoom, drag and resize event.
   render() {
-    const tempLine = this.drawing?.tempLine;
-    // Clear SVG children except the persistent thread group
-    Array.from(this.svg.children).forEach(child => {
-      if (child !== this._threadGroup) child.remove();
-    });
-    if (tempLine && !this.svg.contains(tempLine)) this.svg.appendChild(tempLine);
+    const conns = App.connections;
+    if (conns.length === 0 && this._nodes.size === 0) return; // nothing to do at all
 
-    const rect = Canvas.container.getBoundingClientRect();
+    const rect = Canvas.getRect();
+    const seen = new Set();
+    let hasThreads = false;
 
-    // Arrowhead marker
-    const defs = Utils.createSVGElement('defs');
-    const marker = Utils.createSVGElement('marker', {
-      id: 'arrowhead', markerWidth: 10, markerHeight: 7,
-      refX: 10, refY: 3.5, orient: 'auto',
-    });
-    const polygon = Utils.createSVGElement('polygon', {
-      points: '0 0, 10 3.5, 0 7', class: 'connection-arrow',
-    });
-    marker.appendChild(polygon);
-    defs.appendChild(marker);
-    if (App.connections.some(c => c.arrowhead === 'both')) {
-      const markerStart = Utils.createSVGElement('marker', {
-        id: 'arrowhead-start', markerWidth: 10, markerHeight: 7,
-        refX: 0, refY: 3.5, orient: 'auto-start-reverse',
-      });
-      const polyStart = Utils.createSVGElement('polygon', {
-        points: '0 0, 10 3.5, 0 7', class: 'connection-arrow',
-      });
-      markerStart.appendChild(polyStart);
-      defs.appendChild(markerStart);
-    }
-    this.svg.appendChild(defs);
-
-    // Draw non-thread connections
-    App.connections.forEach(conn => {
+    conns.forEach(conn => {
       const fromData = Elements.getData(conn.from);
       const toData   = Elements.getData(conn.to);
       if (!fromData || !toData) return;
 
       // Threads are drawn by the physics loop
-      if (fromData.type === 'pin' || toData.type === 'pin') return;
+      if (fromData.type === 'pin' || toData.type === 'pin') { hasThreads = true; return; }
 
       const fromPt = this.getAnchorPoint(fromData, conn.fromAnchor);
       const toPt   = this.getAnchorPoint(toData, conn.toAnchor);
-
       const fromScreen = Canvas.canvasToScreen(fromPt.x, fromPt.y);
       const toScreen   = Canvas.canvasToScreen(toPt.x, toPt.y);
 
-      const x1 = fromScreen.x - rect.left;
-      const y1 = fromScreen.y - rect.top;
-      const x2 = toScreen.x - rect.left;
-      const y2 = toScreen.y - rect.top;
-
-      const deleteConn = (e) => {
-        e.stopPropagation();
-        App.connections = App.connections.filter(c => c.id !== conn.id);
-        this.render();
-        App.saveState();
-      };
-      const cycleStyle = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const styles = ['curve', 'arrow', 'line'];
-        conn.style = styles[(styles.indexOf(conn.style) + 1) % styles.length];
-        this.render();
-        App.saveState();
-      };
-
-      const _stroke = conn.color || null;
-      const _dash   = conn.lineStyle === 'dashed' ? '8 4' : conn.lineStyle === 'dotted' ? '3 3' : null;
-      const _mEnd   = conn.style !== 'line' ? 'url(#arrowhead)' : '';
-      const _mStart = conn.arrowhead === 'both' ? 'url(#arrowhead-start)' : '';
-
-      if (conn.style === 'curve') {
-        const dx = Math.abs(x2 - x1) * 0.5;
-        const cp1x = conn.fromAnchor === 'right' ? x1 + dx : conn.fromAnchor === 'left' ? x1 - dx : x1;
-        const cp1y = conn.fromAnchor === 'bottom' ? y1 + dx : conn.fromAnchor === 'top' ? y1 - dx : y1;
-        const cp2x = conn.toAnchor === 'right' ? x2 + dx : conn.toAnchor === 'left' ? x2 - dx : x2;
-        const cp2y = conn.toAnchor === 'bottom' ? y2 + dx : conn.toAnchor === 'top' ? y2 - dx : y2;
-        const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
-        const hitPath = Utils.createSVGElement('path', { d: pathD, 'data-connection-id': conn.id });
-        hitPath.setAttribute('stroke', 'transparent'); hitPath.setAttribute('stroke-width', '16'); hitPath.setAttribute('fill', 'none'); hitPath.style.pointerEvents = 'stroke'; hitPath.style.cursor = 'pointer';
-        hitPath.addEventListener('dblclick', deleteConn);
-        hitPath.addEventListener('contextmenu', cycleStyle);
-        this.svg.appendChild(hitPath);
-        const path = Utils.createSVGElement('path', {
-          d: pathD, class: 'connection-line',
-          'marker-end': _mEnd, 'marker-start': _mStart, 'data-connection-id': conn.id,
-        });
-        if (_stroke) path.setAttribute('stroke', _stroke);
-        if (_dash)   path.setAttribute('stroke-dasharray', _dash);
-        path.style.pointerEvents = 'none';
-        this.svg.appendChild(path);
-      } else {
-        const hitLine = Utils.createSVGElement('line', { x1, y1, x2, y2, 'data-connection-id': conn.id });
-        hitLine.setAttribute('stroke', 'transparent'); hitLine.setAttribute('stroke-width', '16'); hitLine.style.pointerEvents = 'stroke'; hitLine.style.cursor = 'pointer';
-        hitLine.addEventListener('dblclick', deleteConn);
-        hitLine.addEventListener('contextmenu', cycleStyle);
-        this.svg.appendChild(hitLine);
-        const line = Utils.createSVGElement('line', {
-          x1, y1, x2, y2, class: 'connection-line',
-          'marker-end': _mEnd, 'marker-start': _mStart,
-          'data-connection-id': conn.id,
-        });
-        if (_stroke) line.setAttribute('stroke', _stroke);
-        if (_dash)   line.setAttribute('stroke-dasharray', _dash);
-        line.style.pointerEvents = 'none';
-        this.svg.appendChild(line);
-      }
-
-      if (conn.label) {
-        const lx = (x1 + x2) / 2;
-        const ly = (y1 + y2) / 2 - 8;
-        const text = Utils.createSVGElement('text', { x: lx, y: ly, class: 'connection-label' });
-        text.textContent = conn.label;
-        this.svg.appendChild(text);
-      }
+      this._syncConnection(conn, {
+        x1: fromScreen.x - rect.left,
+        y1: fromScreen.y - rect.top,
+        x2: toScreen.x - rect.left,
+        y2: toScreen.y - rect.top,
+      });
+      seen.add(conn.id);
     });
 
+    // Drop nodes for connections that no longer exist
+    this._nodes.forEach((node, id) => {
+      if (seen.has(id)) return;
+      node.hit.remove();
+      node.main.remove();
+      node.label?.remove();
+      this._nodes.delete(id);
+    });
 
-    // Thread group stays on top
-    this.svg.appendChild(this._threadGroup);
-
-    // Update thread paths for current pan/zoom and start loop if needed
     this._drawThreadPaths();
-    const hasThreads = App.connections.some(conn => {
-      const f = Elements.getData(conn.from);
-      const t = Elements.getData(conn.to);
-      return f?.type === 'pin' || t?.type === 'pin';
-    });
     if (hasThreads) this.startPhysicsLoop();
+  },
 
-    this.svg.setAttribute('width', Canvas.container.clientWidth);
-    this.svg.setAttribute('height', Canvas.container.clientHeight);
+  _syncConnection(conn, p) {
+    const kind = conn.style === 'curve' ? 'curve' : 'line';
+    let node = this._nodes.get(conn.id);
+
+    // A style switch changes the element type, so those nodes get replaced
+    if (node && node.kind !== kind) {
+      node.hit.remove();
+      node.main.remove();
+      node.label?.remove();
+      node = null;
+    }
+
+    if (!node) {
+      const tag = kind === 'curve' ? 'path' : 'line';
+      const hit = Utils.createSVGElement(tag, { 'data-connection-id': conn.id });
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '16');
+      if (kind === 'curve') hit.setAttribute('fill', 'none');
+      hit.style.pointerEvents = 'stroke';
+      hit.style.cursor = 'pointer';
+      const main = Utils.createSVGElement(tag, { class: 'connection-line', 'data-connection-id': conn.id });
+      main.style.pointerEvents = 'none';
+      // Insert before the thread group so threads keep painting on top
+      this.svg.insertBefore(hit, this._threadGroup);
+      this.svg.insertBefore(main, this._threadGroup);
+      node = { hit, main, label: null, kind };
+      this._nodes.set(conn.id, node);
+    }
+
+    if (kind === 'curve') {
+      const dx = Math.abs(p.x2 - p.x1) * 0.5;
+      const cp1x = conn.fromAnchor === 'right' ? p.x1 + dx : conn.fromAnchor === 'left' ? p.x1 - dx : p.x1;
+      const cp1y = conn.fromAnchor === 'bottom' ? p.y1 + dx : conn.fromAnchor === 'top' ? p.y1 - dx : p.y1;
+      const cp2x = conn.toAnchor === 'right' ? p.x2 + dx : conn.toAnchor === 'left' ? p.x2 - dx : p.x2;
+      const cp2y = conn.toAnchor === 'bottom' ? p.y2 + dx : conn.toAnchor === 'top' ? p.y2 - dx : p.y2;
+      const d = `M ${p.x1} ${p.y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p.x2} ${p.y2}`;
+      node.hit.setAttribute('d', d);
+      node.main.setAttribute('d', d);
+    } else {
+      ['x1', 'y1', 'x2', 'y2'].forEach(k => {
+        node.hit.setAttribute(k, p[k]);
+        node.main.setAttribute(k, p[k]);
+      });
+    }
+
+    const stroke = conn.color || null;
+    const dash = conn.lineStyle === 'dashed' ? '8 4' : conn.lineStyle === 'dotted' ? '3 3' : null;
+    this._setAttr(node.main, 'stroke', stroke);
+    this._setAttr(node.main, 'stroke-dasharray', dash);
+    this._setAttr(node.main, 'marker-end', conn.style !== 'line' ? 'url(#arrowhead)' : null);
+    this._setAttr(node.main, 'marker-start', conn.arrowhead === 'both' ? 'url(#arrowhead-start)' : null);
+
+    if (conn.label) {
+      if (!node.label) {
+        node.label = Utils.createSVGElement('text', { class: 'connection-label' });
+        this.svg.insertBefore(node.label, this._threadGroup);
+      }
+      node.label.setAttribute('x', (p.x1 + p.x2) / 2);
+      node.label.setAttribute('y', (p.y1 + p.y2) / 2 - 8);
+      if (node.label.textContent !== conn.label) node.label.textContent = conn.label;
+    } else if (node.label) {
+      node.label.remove();
+      node.label = null;
+    }
+  },
+
+  _setAttr(el, name, value) {
+    if (value == null || value === '') el.removeAttribute(name);
+    else if (el.getAttribute(name) !== String(value)) el.setAttribute(name, value);
   },
 
   removeForElement(id) {
