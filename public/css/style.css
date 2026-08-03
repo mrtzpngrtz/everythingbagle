@@ -876,16 +876,16 @@ body.dark .board-dropdown-item .board-name {
 body.dark .grid-dot   { fill: #2A2A2A; }
 body.dark .grid-cross { stroke: #303030; }
 
-/* While the view is actually moving, skip hover work the user can't see anyway.
-   Keyed on .pan-active (set only once the pointer really moves), NOT on .panning
-   — that one is also set merely by selecting the pan tool, and suppressing
-   hit-testing then would retarget click/dblclick to the container and break
-   opening images. */
+/* While the view is moving, suppress the hover transitions that would otherwise
+   fire on every element the cursor sweeps across.
+
+   Deliberately NOT pointer-events:none. Disabling hit-testing here retargets
+   mouseup to the container, so the click/dblclick that follows is dispatched on
+   the common ancestor and every `closest('.canvas-element')` handler bails out —
+   which killed opening and playing media on shared boards. The saving was one
+   hit-test per frame; the transitions were the actual cost. */
 #canvas-container.pan-active #canvas { will-change: transform; }
-#canvas-container.pan-active .canvas-element {
-  transition: none;
-  pointer-events: none;
-}
+#canvas-container.pan-active .canvas-element { transition: none; }
 #canvas-container.pan-active .connection-anchor { transition: none; }
 
 #connections-svg {
@@ -1282,6 +1282,11 @@ body.dark .util-toast {
 
 /* All children non-interactive so the canvas-element drag works */
 .el-file--video * { pointer-events: none; }
+
+/* On a shared board there is no dragging, so the play overlay can take the
+   click it visually promises. Without this the hit-test lands on .el-file and
+   the .file-play handler never runs. */
+body.read-only .el-file--video .file-play { pointer-events: all; cursor: pointer; }
 
 .el-file .file-thumb {
   position: absolute;

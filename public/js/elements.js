@@ -36,6 +36,9 @@ const Elements = {
   },
 
   init() {
+    // Marks the read-only viewer so CSS can make the ▶ overlay clickable there.
+    // In the editor its children stay non-interactive so dragging keeps working.
+    if (App.READ_ONLY) document.body.classList.add('read-only');
     if (!App.READ_ONLY) this.bindCanvasEvents();
     this.bindViewerEvents();
   },
