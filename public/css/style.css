@@ -876,14 +876,17 @@ body.dark .board-dropdown-item .board-name {
 body.dark .grid-dot   { fill: #2A2A2A; }
 body.dark .grid-cross { stroke: #303030; }
 
-/* While panning, skip hover work the user can't see anyway: no hit-testing,
-   no outline/anchor transitions firing as the cursor sweeps over elements. */
-#canvas-container.panning #canvas { will-change: transform; }
-#canvas-container.panning .canvas-element {
+/* While the view is actually moving, skip hover work the user can't see anyway.
+   Keyed on .pan-active (set only once the pointer really moves), NOT on .panning
+   — that one is also set merely by selecting the pan tool, and suppressing
+   hit-testing then would retarget click/dblclick to the container and break
+   opening images. */
+#canvas-container.pan-active #canvas { will-change: transform; }
+#canvas-container.pan-active .canvas-element {
   transition: none;
   pointer-events: none;
 }
-#canvas-container.panning .connection-anchor { transition: none; }
+#canvas-container.pan-active .connection-anchor { transition: none; }
 
 #connections-svg {
   position: absolute;

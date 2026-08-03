@@ -58,6 +58,7 @@ const Utils = {
       if (xhr.status === 429) {
         const err = new Error('Rate limited');
         err.rateLimited = true;
+        err.retryAfter = parseInt(xhr.getResponseHeader('Retry-After'), 10) || 0;
         return reject(err);
       }
       try { resolve(JSON.parse(xhr.responseText)); }
@@ -70,14 +71,18 @@ const Utils = {
 
   // The server allows 30 uploads/min. Since an image now costs two uploads
   // (original + display variant), hitting the limit is routine — wait it out
-  // rather than dropping the file.
+  // rather than dropping the file. The total budget has to exceed the server's
+  // 60s window, or a large multi-file drop still loses files at the end.
   async uploadFile(file, onProgress, filename) {
     for (let attempt = 0; ; attempt++) {
       try {
         return await Utils._uploadOnce(file, onProgress, filename);
       } catch (err) {
-        if (!err.rateLimited || attempt >= 3) throw err;
-        await new Promise(r => setTimeout(r, 15000));
+        if (!err.rateLimited || attempt >= 5) throw err;
+        // Honour Retry-After when the server sends it; otherwise wait out a
+        // full window. 5 retries x 20s = 100s > the 60s window.
+        const wait = err.retryAfter ? Math.min(err.retryAfter * 1000, 65000) : 20000;
+        await new Promise(r => setTimeout(r, wait));
       }
     }
   },
@@ -99,9 +104,10 @@ const Utils = {
     if (src.type === 'image/gif') return null;
 
     // Without WebP encoding the fallback is JPEG, which has no alpha channel —
-    // a transparent PNG would come back flattened onto black. Keep the original.
+    // a transparent source would come back flattened onto black. Keep the original.
     const type = Utils._variantType();
-    if (type !== 'image/webp' && (src.type === 'image/png' || src.type === 'image/avif')) return null;
+    const HAS_ALPHA = ['image/png', 'image/avif', 'image/webp'];
+    if (type !== 'image/webp' && HAS_ALPHA.includes(src.type)) return null;
 
     let bmp;
     try {

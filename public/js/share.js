@@ -11,6 +11,7 @@ const Share = {
       document.body.classList.toggle('dark');
       localStorage.setItem('wms-darkmode', document.body.classList.contains('dark'));
       Canvas.drawGrid();
+      Canvas.updateMinimap(); // the minimap bitmap carries theme colours
     });
 
     // Get token from URL path: /share/:token

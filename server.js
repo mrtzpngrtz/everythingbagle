@@ -11,6 +11,7 @@ const QRCode = require('qrcode');
 const { rateLimit } = require('express-rate-limit');
 const FileStore = require('session-file-store')(session);
 const helmet = require('helmet');
+const zip = require('./lib/zip');
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many login attempts, try again later' } });
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many registration attempts, try again later' } });
@@ -753,6 +754,143 @@ app.post('/api/boards/:name', requireAuth, boardWriteLimiter, (req, res) => {
   };
   atomicWriteJSON(filePath, data);
   res.json({ success: true });
+});
+
+// ── Board archive (ZIP) ─────────────────────────────────────────────────
+// The JSON export embeds every upload as base64, which inflates by a third and
+// forces the browser to build one giant string on both ends — that caps out
+// well below the size real boards reach. A ZIP is streamed here and unpacked
+// here, so neither side ever holds the whole archive.
+
+function collectUploadRefs(elements) {
+  const refs = new Set();
+  (elements || []).forEach(el => {
+    ['url', 'displayUrl'].forEach(key => {
+      const value = el[key];
+      if (typeof value === 'string' && value.startsWith('/uploads/')) {
+        const base = path.basename(value);
+        if (/^[a-zA-Z0-9._-]+$/.test(base)) refs.add(base);
+      }
+    });
+  });
+  return refs;
+}
+
+app.get('/api/boards/:name/archive', requireAuth, exportLimiter, async (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
+  const filePath = path.join(getUserBoardDir(req.session.user.username), name + '.json');
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Board not found' });
+
+  let board;
+  try {
+    board = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return res.status(500).json({ error: 'Board file is unreadable' });
+  }
+  delete board.meta; // share tokens and password hashes must not travel
+
+  // One entry per unique file — several elements pointing at the same upload
+  // used to produce one full base64 copy each in the JSON export.
+  const sources = [{ name: 'board.json', buffer: Buffer.from(JSON.stringify(board), 'utf8') }];
+  collectUploadRefs(board.elements).forEach(base => {
+    const src = path.join(__dirname, 'uploads', base);
+    if (fs.existsSync(src)) sources.push({ name: 'files/' + base, filePath: src });
+  });
+
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${name}_${stamp}.zip"`);
+  try {
+    res.setHeader('Content-Length', zip.zipSize(sources));
+  } catch { /* a file vanished between the check and here — stream without a length */ }
+
+  try {
+    await zip.streamZip(res, sources);
+  } catch (err) {
+    console.error('Archive export failed:', err);
+    res.destroy(); // headers are already out; cut the connection so it registers as failed
+  }
+});
+
+const archiveUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, 'uploads/'),
+    filename: (req, file, cb) => cb(null, `import-${Date.now()}-${Math.round(Math.random() * 1e9)}.zip`),
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 * 1024 },
+});
+
+app.post('/api/boards/:name/archive', requireAuth, boardWriteLimiter, (req, res) => {
+  archiveUpload.single('archive')(req, res, (uploadErr) => {
+    if (uploadErr) return res.status(400).json({ error: uploadErr.message });
+    if (!req.file) return res.status(400).json({ error: 'No archive uploaded' });
+
+    const name = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '');
+    const tmpPath = req.file.path;
+    let archive = null;
+    const written = [];
+
+    try {
+      archive = zip.openZip(tmpPath);
+      const boardEntry = archive.entries.find(e => e.name === 'board.json');
+      if (!boardEntry) throw Object.assign(new Error('Archive has no board.json'), { status: 400 });
+
+      const board = JSON.parse(zip.readEntryBuffer(archive, boardEntry).toString('utf8'));
+      if (!Array.isArray(board.elements)) {
+        throw Object.assign(new Error('board.json has no elements array'), { status: 400 });
+      }
+
+      // Unpack under fresh names so an import can never overwrite an existing upload
+      const remap = new Map();
+      archive.entries.forEach(entry => {
+        if (!entry.name.startsWith('files/')) return;
+        const base = path.basename(entry.name);
+        if (!/^[a-zA-Z0-9._-]+$/.test(base) || base === '.' || base === '..') return;
+        const ext = path.extname(base).toLowerCase().slice(0, 10) || '.bin';
+        const fresh = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+        const dest = path.join(__dirname, 'uploads', fresh);
+        zip.extractEntryToFile(archive, entry, dest);
+        written.push(dest);
+        remap.set(base, '/uploads/' + fresh);
+      });
+
+      board.elements.forEach(el => {
+        ['url', 'displayUrl'].forEach(key => {
+          const value = el[key];
+          if (typeof value !== 'string' || !value.startsWith('/uploads/')) return;
+          const mapped = remap.get(path.basename(value));
+          if (mapped) el[key] = mapped;
+          else if (key === 'displayUrl') delete el[key]; // missing variant: fall back to the original
+        });
+      });
+
+      const boardPath = path.join(getUserBoardDir(req.session.user.username), name + '.json');
+      atomicWriteJSON(boardPath, {
+        elements: board.elements,
+        connections: board.connections || [],
+        viewport: board.viewport || { panX: 0, panY: 0, zoom: 1 },
+        ...(board.thumbnail ? { thumbnail: board.thumbnail } : {}),
+        meta: {
+          boardId: crypto.randomUUID(),
+          created: new Date().toISOString(),
+          lastEdit: new Date().toISOString(),
+          elementCount: board.elements.length,
+          owner: req.session.user.username,
+          collaborators: [],
+        },
+      });
+
+      res.json({ success: true, name, elements: board.elements.length, files: written.length });
+    } catch (err) {
+      // Don't leave half an import behind
+      written.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+      console.error('Archive import failed:', err);
+      res.status(err.status || 400).json({ error: err.message || 'Import failed' });
+    } finally {
+      if (archive) zip.closeZip(archive);
+      try { fs.unlinkSync(tmpPath); } catch {}
+    }
+  });
 });
 
 // Rename board

@@ -394,6 +394,7 @@ const Elements = {
     }
 
     Canvas.canvasEl.appendChild(el);
+    Canvas.invalidateMinimap(); // covers every creation path, not just the ones that remember
     return el;
   },
 

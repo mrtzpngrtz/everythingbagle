@@ -802,11 +802,22 @@ const Storage = {
         const downloadBtn = document.createElement('button');
         downloadBtn.className = 'dash-card-btn';
         downloadBtn.textContent = '↓';
-        downloadBtn.title = 'Download as JSON';
-        downloadBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.downloadBoardByName(board.name, isShared ? board.owner : null, downloadBtn);
-        });
+        if (isShared) {
+          // The archive route only serves the owner's own boards
+          downloadBtn.title = 'Download as JSON';
+          downloadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.downloadBoardByName(board.name, board.owner, downloadBtn);
+          });
+        } else {
+          downloadBtn.title = 'Download board archive (.zip)';
+          downloadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // A plain navigation: the browser streams it to disk, so board size
+            // is bounded by disk rather than by JS string limits.
+            window.location.href = `/api/boards/${encodeURIComponent(board.name)}/archive`;
+          });
+        }
         footerRight.appendChild(downloadBtn);
 
         footer.appendChild(footerLeft);
@@ -837,9 +848,13 @@ const Storage = {
   initDashboard() {
     const importInput = document.getElementById('dashboard-import-input');
     document.getElementById('dashboard-import-board').addEventListener('click', () => importInput.click());
+    importInput.accept = '.zip,.json,application/zip,application/json';
     importInput.addEventListener('change', (e) => {
-      if (e.target.files[0]) {
-        this.importBoardFromJson(e.target.files[0]);
+      const file = e.target.files[0];
+      if (file) {
+        // .json stays supported so older exports still import
+        if (/\.zip$/i.test(file.name)) this.importBoardArchive(file);
+        else this.importBoardFromJson(file);
         e.target.value = '';
       }
     });
@@ -1028,21 +1043,39 @@ const Storage = {
         }));
       }
 
+      // Re-read before writing: optimizing can take minutes, and the board may
+      // have been edited meanwhile (autosave from another tab). Only the image
+      // fields this function produced get merged back in.
+      const patch = new Map();
+      elements.forEach(el => {
+        if (el.optimized) patch.set(el.id, { displayUrl: el.displayUrl, displayW: el.displayW, displayH: el.displayH, optimized: true });
+      });
+      const fresh = await (await fetch(url)).json();
+      const merged = (fresh.elements || []).map(el => {
+        const p = patch.get(el.id);
+        if (!p) return el;
+        const next = { ...el, optimized: true };
+        if (p.displayUrl) { next.displayUrl = p.displayUrl; next.displayW = p.displayW; next.displayH = p.displayH; }
+        return next;
+      });
+
       const saveRes = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          elements,
-          connections: board.connections || [],
-          viewport: board.viewport || { panX: 0, panY: 0, zoom: 1 },
-          ...(board.thumbnail ? { thumbnail: board.thumbnail } : {}),
+          elements: merged,
+          connections: fresh.connections || [],
+          viewport: fresh.viewport || { panX: 0, panY: 0, zoom: 1 },
+          ...(fresh.thumbnail ? { thumbnail: fresh.thumbnail } : {}),
         }),
       });
       if (!saveRes.ok) throw new Error(`save failed (${saveRes.status})`);
 
-      // If this board is open right now, show the result without a reload
-      if (this.currentBoard === name && !this.currentBoardOwner) {
-        App.elements = elements;
+      // If this board is open in THIS tab, show the result without a reload.
+      // The dashboard page has no App/Elements, hence the guards.
+      if (typeof App !== 'undefined' && typeof Elements !== 'undefined' &&
+          this.currentBoard === name && !this.currentBoardOwner && Canvas?.canvasEl) {
+        App.elements = merged;
         Elements.renderAll();
       }
 
@@ -1112,6 +1145,47 @@ const Storage = {
     } finally {
       if (btn) { btn.textContent = orig; btn.disabled = false; }
     }
+  },
+
+  // The archive is handed to the server as-is. Nothing is decoded in the
+  // browser, so board size is no longer bounded by the JS string limit.
+  async importBoardArchive(file) {
+    const defaultName = file.name.replace(/\.zip$/i, '').replace(/_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}$/, '');
+    const name = await Dialog.prompt('Import as board name:', defaultName.replace(/[^a-zA-Z0-9_-]/g, '_'), 'IMPORT BOARD');
+    if (!name || !name.trim()) return;
+    const cleanName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    const existing = await fetch('/api/boards').then(r => r.json()).catch(() => []);
+    if (Array.isArray(existing) && existing.some(b => b.name === cleanName && !b.owner)) {
+      const ok = await Dialog.confirm(`Board "${cleanName}" already exists. Overwrite it?`);
+      if (!ok) return;
+    }
+
+    const form = new FormData();
+    form.append('archive', file, file.name);
+
+    const result = await new Promise(resolve => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener('progress', ev => {
+        if (ev.lengthComputable) {
+          Utils.toast(`Uploading ${Math.round(ev.loaded / ev.total * 100)}%`, 1200);
+        }
+      });
+      xhr.addEventListener('load', () => {
+        try { resolve({ status: xhr.status, body: JSON.parse(xhr.responseText) }); }
+        catch { resolve({ status: xhr.status, body: {} }); }
+      });
+      xhr.addEventListener('error', () => resolve({ status: 0, body: {} }));
+      xhr.open('POST', `/api/boards/${encodeURIComponent(cleanName)}/archive`);
+      xhr.send(form);
+    });
+
+    if (result.status !== 200) {
+      await Dialog.alert('Import failed: ' + (result.body.error || `HTTP ${result.status}`), 'ERROR');
+      return;
+    }
+    Utils.toast(`Imported ${result.body.elements} elements, ${result.body.files} files`, 4000);
+    this.refreshDashboard();
   },
 
   async importBoardFromJson(file) {

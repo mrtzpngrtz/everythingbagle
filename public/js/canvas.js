@@ -86,11 +86,15 @@ const Canvas = {
         this.panX += dx;
         this.panY += dy;
         this.lastMouse = { x: e.clientX, y: e.clientY };
+        // Only now is the view genuinely moving — a mousedown alone must not
+        // disable hit-testing, or the click that follows lands on the container.
+        this.container.classList.add('pan-active');
         this.scheduleViewUpdate();
       }
     });
 
     window.addEventListener('mouseup', (e) => {
+      this.container.classList.remove('pan-active');
       if (this.isPanning) {
         this.isPanning = false;
         this.container.classList.remove('panning');
@@ -150,7 +154,9 @@ const Canvas = {
     Frame.schedule('transform', () => this.updateTransform());
     Frame.schedule('grid', () => this.applyGrid());
     Frame.schedule('connections', () => Connections.render());
-    Frame.schedule('minimap', () => this.updateMinimapViewport());
+    // drawMinimapContent is a no-op unless something marked the map dirty, so
+    // this stays cheap while still picking up geometry changes.
+    Frame.schedule('minimap', () => { this.drawMinimapContent(); this.updateMinimapViewport(); });
   },
 
   bindTouchEvents() {
@@ -217,6 +223,7 @@ const Canvas = {
           this.panY += e.touches[0].clientY - touchStartY;
           touchStartX = e.touches[0].clientX;
           touchStartY = e.touches[0].clientY;
+          this.container.classList.add('pan-active');
           this.scheduleViewUpdate();
         }
       }
@@ -227,6 +234,7 @@ const Canvas = {
         lastTouchDist = 0;
       }
       if (e.touches.length === 0) {
+        this.container.classList.remove('pan-active');
         if (touchPanning) {
           touchPanning = false;
           this.container.classList.remove('panning');
@@ -432,6 +440,9 @@ const Canvas = {
   },
 
   updateMinimapViewport() {
+    // Never trust a latched 'empty' — elements can appear through paths that
+    // only invalidate, and the viewport rect would stay hidden forever.
+    if (this._mm.dirty) this.drawMinimapContent();
     if (this._mm.empty) return;
     const canvas = document.getElementById('minimap-canvas');
     const vp = document.getElementById('minimap-viewport');
