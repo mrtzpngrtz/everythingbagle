@@ -15,17 +15,23 @@ const Properties = {
 
     const ratioLocked = Elements.isRatioLocked(data);
     const ratioPresets = [['1:1', 1], ['4:3', 4/3], ['3:2', 3/2], ['16:9', 16/9]];
+    // Ranges follow the element instead of capping it at 800: the slider always
+    // reaches well past the current size, and the floor matches the drag handles.
+    const sliderMax = v => Math.max(1200, Math.ceil(v * 1.5 / 100) * 100);
+    const wMax = sliderMax(data.width);
+    const hMax = sliderMax(data.height);
+    const MIN = Elements.MIN_SIZE;
     let html = `
       <div class="prop-group">
         <div class="prop-label">01 — ${data.type.toUpperCase()}</div>
         <div class="prop-slider-row">
           <span class="prop-slider-label">W</span>
-          <input class="prop-slider" type="range" data-prop="width" value="${Math.round(data.width)}" min="40" max="800" />
+          <input class="prop-slider" type="range" data-prop="width" value="${Math.round(data.width)}" min="${MIN}" max="${wMax}" />
           <span class="prop-slider-value" data-display="width">${Math.round(data.width)}</span>
         </div>
         <div class="prop-slider-row">
           <span class="prop-slider-label">H</span>
-          <input class="prop-slider" type="range" data-prop="height" value="${Math.round(data.height)}" min="20" max="800" />
+          <input class="prop-slider" type="range" data-prop="height" value="${Math.round(data.height)}" min="${MIN}" max="${hMax}" />
           <span class="prop-slider-value" data-display="height">${Math.round(data.height)}</span>
         </div>
         <div class="prop-ratio-row">

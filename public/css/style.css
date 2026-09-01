@@ -1005,7 +1005,10 @@ body.dark .grid-cross { stroke: #303030; }
 .rotate-handle:active { cursor: grabbing; }
 .canvas-element.img-pan-mode .rotate-handle { opacity: 0.3; pointer-events: none; }
 
-/* Connection anchor points */
+/* Connection anchor points.
+   --anchor-scale is the inverse of the canvas zoom (set in Canvas.updateTransform),
+   so the dots keep a constant on-screen size instead of shrinking to a few pixels
+   when the board is zoomed out. */
 .connection-anchor {
   position: absolute;
   width: 14px;
@@ -1018,21 +1021,39 @@ body.dark .grid-cross { stroke: #303030; }
   transition: opacity 0.1s;
 }
 
+/* Invisible grab area, same trick the resize handles use */
+.canvas-element:hover .connection-anchor::after,
+.canvas-element.selected .connection-anchor::after {
+  content: '';
+  position: absolute;
+  top: -7px; left: -7px; right: -7px; bottom: -7px;
+}
+
 .canvas-element:hover .connection-anchor,
 .canvas-element.selected .connection-anchor {
   opacity: 1;
 }
 
-.connection-anchor.top    { top: -7px; left: 50%; transform: translateX(-50%); }
-.connection-anchor.bottom { bottom: -7px; left: 50%; transform: translateX(-50%); }
-.connection-anchor.left   { left: -7px; top: 50%; transform: translateY(-50%); }
-.connection-anchor.right  { right: -7px; top: 50%; transform: translateY(-50%); }
+.connection-anchor.top    { top: -7px; left: 50%; transform: translateX(-50%) scale(var(--anchor-scale, 1)); }
+.connection-anchor.bottom { bottom: -7px; left: 50%; transform: translateX(-50%) scale(var(--anchor-scale, 1)); }
+.connection-anchor.left   { left: -7px; top: 50%; transform: translateY(-50%) scale(var(--anchor-scale, 1)); }
+.connection-anchor.right  { right: -7px; top: 50%; transform: translateY(-50%) scale(var(--anchor-scale, 1)); }
+
+/* Element the connection would snap to if released now */
+.canvas-element.conn-target {
+  outline: 2px solid var(--accent, #0066ff) !important;
+  outline-offset: 3px;
+}
+.canvas-element.conn-target .connection-anchor {
+  opacity: 1;
+  background: var(--accent, #0066ff);
+}
 
 /* --- Text Element --- */
 .el-text {
-  padding: 8px 12px;
-  min-width: 60px;
-  min-height: 24px;
+  padding: min(8px, 10%) min(12px, 10%);
+  min-width: 8px;
+  min-height: 8px;
   font-family: var(--font-sans);
   font-size: 14px;
   color: var(--black);
@@ -1084,8 +1105,8 @@ body.dark .grid-cross { stroke: #303030; }
 /* --- Heading Element --- */
 .el-heading {
   padding: 4px 8px;
-  min-width: 100px;
-  min-height: 50px;
+  min-width: 8px;
+  min-height: 8px;
   font-family: var(--font-sans);
   font-size: 50px;
   font-weight: 900;
@@ -1103,9 +1124,9 @@ body.dark .grid-cross { stroke: #303030; }
 
 /* --- Sticky Note --- */
 .el-note {
-  min-width: 180px;
-  min-height: 120px;
-  padding: 20px;
+  min-width: 8px;
+  min-height: 8px;
+  padding: min(20px, 12%);
   background: var(--white);
   border: var(--border);
   font-family: var(--font-sans);
@@ -1332,16 +1353,16 @@ body.read-only .el-file--video .file-play { pointer-events: all; cursor: pointer
 .el-rect {
   background: transparent;
   border: 1px solid var(--black);
-  min-width: 60px;
-  min-height: 40px;
+  min-width: 8px;
+  min-height: 8px;
 }
 
 .el-circle {
   background: transparent;
   border: 1px solid var(--black);
   border-radius: 50%;
-  min-width: 60px;
-  min-height: 60px;
+  min-width: 8px;
+  min-height: 8px;
 }
 
 /* --- Image Pan Mode --- */
@@ -2714,8 +2735,10 @@ body.dark #suggestion-submit:hover {
 
 /* Pin element — drag body to move */
 .el-pin {
-  width: 22px;
-  height: 22px;
+  width: 100%;
+  height: 100%;
+  min-width: 8px;
+  min-height: 8px;
   border-radius: 50%;
   background: radial-gradient(circle at 38% 35%, #FF5555, #AA0000);
   box-shadow: 1px 2px 5px rgba(0,0,0,0.45), inset 0 1px 2px rgba(255,255,255,0.25);
@@ -2725,12 +2748,12 @@ body.dark #suggestion-submit:hover {
 .el-pin::after {
   content: '';
   position: absolute;
-  width: 5px;
-  height: 5px;
+  width: 22%;
+  height: 22%;
   background: rgba(255,255,255,0.55);
   border-radius: 50%;
-  top: 4px;
-  left: 5px;
+  top: 18%;
+  left: 22%;
 }
 
 /* Pin center connect dot — drag to draw thread */
@@ -2748,6 +2771,14 @@ body.dark #suggestion-submit:hover {
   cursor: crosshair;
   z-index: 2;
   transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.connection-anchor.pin-ring { transform: translate(-50%, -50%) scale(var(--anchor-scale, 1)); }
+.canvas-element:hover .connection-anchor.pin-ring::after,
+.canvas-element.selected .connection-anchor.pin-ring::after {
+  content: '';
+  position: absolute;
+  top: -8px; left: -8px; right: -8px; bottom: -8px;
 }
 
 .canvas-element:hover .connection-anchor.pin-ring,

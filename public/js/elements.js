@@ -1,6 +1,9 @@
 /* === ELEMENTS === */
 const Elements = {
   selected: [],
+  // Elements may be resized to anything down to this; a true zero would make
+  // them unselectable and breaks the aspect-ratio maths.
+  MIN_SIZE: 8,
   dragging: null,
   resizing: null,
   imgPanning: null,
@@ -445,7 +448,7 @@ const Elements = {
   showSelected(dom) {
     dom.classList.add('selected');
     const data = this.getData(dom.dataset.id);
-    if (data?.type !== 'pin' && !dom.querySelector('.resize-handle')) {
+    if (!dom.querySelector('.resize-handle')) {
       ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'].forEach(dir => {
         const handle = document.createElement('div');
         handle.className = 'resize-handle ' + dir;
@@ -827,8 +830,8 @@ const Elements = {
     }
 
     // Floor the scale so the smallest member never collapses.
-    const minSx = 8 / r.minItemW;
-    const minSy = 6 / r.minItemH;
+    const minSx = this.MIN_SIZE / r.minItemW;
+    const minSy = this.MIN_SIZE / r.minItemH;
     if (constrain) {
       const s = Math.max(sx, minSx, minSy);
       sx = sy = s;
@@ -843,8 +846,6 @@ const Elements = {
         x: anchorX + (it.x - anchorX) * sx,
         y: anchorY + (it.y - anchorY) * sy,
       };
-      // Pins are fixed-size markers — they move with the selection but don't grow
-      if (it.type === 'pin') { this.updateElement(it.id, props); return; }
       props.width = it.w * sx;
       props.height = it.h * sy;
       if (it.fontSize) props.fontSize = Math.max(6, Math.round(it.fontSize * fontScale));
@@ -882,25 +883,26 @@ const Elements = {
     } else {
       let newX = r.origX, newY = r.origY, newW = r.origW, newH = r.origH;
 
-      if (r.dir.includes('e')) newW = Math.max(40, r.origW + dx);
-      if (r.dir.includes('w')) { newW = Math.max(40, r.origW - dx); newX = r.origX + (r.origW - newW); }
-      if (r.dir.includes('s')) newH = Math.max(30, r.origH + dy);
-      if (r.dir.includes('n')) { newH = Math.max(30, r.origH - dy); newY = r.origY + (r.origH - newH); }
+      const MIN = this.MIN_SIZE;
+      if (r.dir.includes('e')) newW = Math.max(MIN, r.origW + dx);
+      if (r.dir.includes('w')) { newW = Math.max(MIN, r.origW - dx); newX = r.origX + (r.origW - newW); }
+      if (r.dir.includes('s')) newH = Math.max(MIN, r.origH + dy);
+      if (r.dir.includes('n')) { newH = Math.max(MIN, r.origH - dy); newY = r.origY + (r.origH - newH); }
 
       if (constrain && r.origW && r.origH) {
         const ratio = r.origRatio || (r.origW / r.origH);
         if (r.dir === 'e' || r.dir === 'w') {
           // Edge handle: drive the other axis from the one being dragged
-          newH = Math.max(30, newW / ratio);
+          newH = Math.max(MIN, newW / ratio);
           newW = newH * ratio;
         } else if (r.dir === 'n' || r.dir === 's') {
-          newW = Math.max(40, newH * ratio);
+          newW = Math.max(MIN, newH * ratio);
           newH = newW / ratio;
         } else {
           // Corner handle: use the larger scale to avoid shrinking one axis below min
           const scale = Math.max(newW / r.origW, newH / r.origH);
-          newW = Math.max(40, r.origW * scale);
-          newH = Math.max(30, newW / ratio);
+          newW = Math.max(MIN, r.origW * scale);
+          newH = Math.max(MIN, newW / ratio);
           newW = newH * ratio;
         }
         if (r.dir.includes('w')) newX = r.origX + r.origW - newW;
@@ -908,9 +910,11 @@ const Elements = {
       }
 
       this.updateElement(r.id, { x: newX, y: newY, width: newW, height: newH });
-      // Scale icon font proportionally with resize
-      if (data && data.type === 'icon' && r.origFontSize && r.origW) {
-        const newFontSize = Math.max(8, Math.round(r.origFontSize * (newW / r.origW)));
+      // Icons and headings are sized by their font — a heading's box is auto-height,
+      // so without this a vertical drag would do nothing at all.
+      if (data && (data.type === 'icon' || data.type === 'heading') && r.origFontSize && r.origW) {
+        const factor = data.type === 'heading' ? Math.max(newW / r.origW, newH / r.origH) : newW / r.origW;
+        const newFontSize = Math.max(6, Math.round(r.origFontSize * factor));
         this.updateElement(r.id, { fontSize: newFontSize });
       }
     }

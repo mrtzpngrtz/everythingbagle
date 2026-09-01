@@ -99,6 +99,7 @@ const Connections = {
       const rect = Canvas.getRect();
       this.drawing.tempLine.setAttribute('x2', e.clientX - rect.left);
       this.drawing.tempLine.setAttribute('y2', e.clientY - rect.top);
+      this._highlightTarget(e);
     });
 
     window.addEventListener('mouseup', (e) => {
@@ -135,9 +136,27 @@ const Connections = {
       }
 
       if (this.drawing.tempLine) this.drawing.tempLine.remove();
+      this._highlightTarget(null);
       this.drawing = null;
       this.render();
     });
+  },
+
+  // Shows which element the connection will attach to. The drop already snaps to
+  // the nearest anchor (closestAnchor); this just makes that visible while dragging,
+  // so you don't have to land on the dot exactly.
+  _highlightTarget(e) {
+    const previous = this._targetEl;
+    let next = null;
+    if (e) {
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const candidate = under && under.closest('.canvas-element');
+      if (candidate && candidate.dataset.id !== this.drawing.fromId) next = candidate;
+    }
+    if (next === previous) return;
+    if (previous) previous.classList.remove('conn-target');
+    if (next) next.classList.add('conn-target');
+    this._targetEl = next;
   },
 
   getAnchorPoint(data, anchor) {

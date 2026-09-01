@@ -254,6 +254,13 @@ const Canvas = {
 
   updateTransform() {
     this.canvasEl.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
+    // Counter-scale the connection anchors so they stay the same size on screen
+    // at any zoom — at 40% they were under 6px and nearly unhittable.
+    const anchorScale = Utils.clamp(1 / this.zoom, 0.3, 3).toFixed(3);
+    if (anchorScale !== this._anchorScale) {
+      this._anchorScale = anchorScale;
+      this.canvasEl.style.setProperty('--anchor-scale', anchorScale);
+    }
     if (this._zoomEl) this._zoomEl.textContent = Math.round(this.zoom * 100);
     if (typeof Collab !== 'undefined') Collab._repositionAllCursors();
     if (typeof Properties !== 'undefined') Properties.updatePosition();
